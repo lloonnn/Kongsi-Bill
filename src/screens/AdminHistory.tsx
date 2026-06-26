@@ -1,54 +1,40 @@
 import { useApp } from '../store';
-import { BackLink, ExtrapolatedTag, Frame, StatusPill, TopBar } from '../ui';
-import { formatPeriod, money, UTILITY_META } from '../calc';
+import { ExtrapolatedTag, Frame, ScreenNav, TopBar } from '../ui';
+import { CombinedBillCard } from '../CombinedBillCard';
+import { groupBillsByMonth } from '../calc';
 
-/** Flat list of past bills; each opens its per-person breakdown. Extrapolated. */
+/**
+ * History as combined bills — one per billing month. Each combined bill shows
+ * the single amount paid to the landlord and how it's composed (each utility ×
+ * each person). Tap a utility to open its working. Extrapolated screen.
+ */
 export function AdminHistory() {
-  const { house, go, back } = useApp();
-  const bills = [...house.bills].sort((a, b) =>
-    a.periodStart < b.periodStart ? 1 : -1
-  );
+  const { house, go } = useApp();
+  const groups = groupBillsByMonth(house.bills);
 
   return (
     <Frame>
-      <TopBar icon="LD" name={house.name} sub="History" admin />
-      <div className="screen">
-        <BackLink onClick={back} />
+      <TopBar icon="LD" name={house.name} sub="Combined bills" admin />
+      <div className="screen gap">
+        <ScreenNav />
+
         <div className="card admin">
           <ExtrapolatedTag />
-          <div className="working-title">All bills</div>
-          <p className="muted-note" style={{ marginBottom: 12 }}>
-            Every bill the house has recorded. Tap one to see its period and the
-            per-person breakdown.
+          <div className="working-title">Combined bills</div>
+          <p className="muted-note">
+            One combined amount goes to the landlord each cycle. Tap a combined
+            bill to see how it’s made up and what each person owes in total.
           </p>
-
-          {bills.map((b) => {
-            const meta = UTILITY_META[b.utility];
-            return (
-              <button
-                key={b.id}
-                className="list-row"
-                onClick={() => go({ name: 'admin-bill-detail', billId: b.id })}
-              >
-                <div className="person-left">
-                  <div className="bill-icon" style={{ width: 38, height: 38, fontSize: 17 }}>
-                    {meta.icon}
-                  </div>
-                  <div>
-                    <div className="lr-title">{meta.label}</div>
-                    <div className="lr-sub">{formatPeriod(b)}</div>
-                  </div>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div className="lr-amount tnum">{money(b.amount)}</div>
-                  <div style={{ marginTop: 6 }}>
-                    <StatusPill status={b.status} />
-                  </div>
-                </div>
-              </button>
-            );
-          })}
         </div>
+
+        {groups.map((g) => (
+          <CombinedBillCard
+            key={g.key}
+            group={g}
+            admin
+            onOpenBill={(billId) => go({ name: 'admin-bill-detail', billId })}
+          />
+        ))}
       </div>
     </Frame>
   );

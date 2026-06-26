@@ -19,27 +19,30 @@ function range(start: string, end: string): string[] {
 // ---------------------------------------------------------------------------
 // The single running example house.
 //
-// The January electricity bill reproduces the calculation-screen reference
-// numbers EXACTLY so the math is hand-verifiable:
-//   Alice 31 days, Bob 15 days, Carol 21 days  ->  total 67 day-shares
+// Everyone is home by default; members only record the days they were AWAY.
+// The January electricity bill (1–31 Jan, 31 days) still reproduces the
+// calculation-screen reference EXACTLY, via away-days:
+//   Alice away 0  -> home 31      Bob away 16 -> home 15      Carol away 10 -> home 21
+//   total 67 home-day-shares
 //   31/67 x $100 = $46.27   15/67 x $100 = $22.39   21/67 x $100 = $31.34
 //   $46.27 + $22.39 + $31.34 = $100.00  (reconciles)
 // ---------------------------------------------------------------------------
 
-const alicePresence = [
-  ...range('2026-01-01', '2026-01-31'), // 31 days — full January (locked bill)
-  ...range('2026-05-16', '2026-06-09'), // 25 days inside the May–Jun grace bill
+// Alice: home all January; a short trip 10–15 Jun.
+const aliceAway = [...range('2026-06-10', '2026-06-15')];
+
+// Bob: away 16 days in January (home 15); away most of the May–Jun period.
+const bobAway = [
+  ...range('2026-01-11', '2026-01-19'), // 9
+  ...range('2026-01-25', '2026-01-31'), // +7 = 16 away in January
+  ...range('2026-05-16', '2026-06-11'), // away most of the open electricity period
 ];
 
-const bobPresence = [
-  ...range('2026-01-01', '2026-01-10'), // 10
-  ...range('2026-01-20', '2026-01-24'), // +5  = 15 days in January
-  ...range('2026-05-16', '2026-05-19'), // 4 days only — looks incomplete in grace
-];
-
-const carolPresence = [
-  ...range('2026-01-01', '2026-01-21'), // 21 days in January
-  ...range('2026-05-20', '2026-06-06'), // 18 days inside the grace bill
+// Carol: away last 10 days of January (home 21); a couple of trips in May–Jun.
+const carolAway = [
+  ...range('2026-01-22', '2026-01-31'), // 10 away in January
+  ...range('2026-05-16', '2026-05-19'), // 4
+  ...range('2026-06-07', '2026-06-15'), // +9
 ];
 
 export const initialHouse: House = {
@@ -48,10 +51,11 @@ export const initialHouse: House = {
   roomId: 'LD12-7F2',
   memberCode: 'XYZ-4821',
   adminCode: 'QRP-9034',
+  adminMemberId: 'm-alice', // Alice set up the house and is also a housemate
   members: [
-    { id: 'm-alice', name: 'Alice', tone: 'accent', active: true, presence: alicePresence },
-    { id: 'm-bob', name: 'Bob', tone: 'alt2', active: true, presence: bobPresence },
-    { id: 'm-carol', name: 'Carol', tone: 'alt3', active: true, presence: carolPresence },
+    { id: 'm-alice', name: 'Alice', tone: 'accent', active: true, awayDays: aliceAway },
+    { id: 'm-bob', name: 'Bob', tone: 'alt2', active: true, awayDays: bobAway },
+    { id: 'm-carol', name: 'Carol', tone: 'alt3', active: true, awayDays: carolAway },
   ],
   bills: [
     {
@@ -64,38 +68,26 @@ export const initialHouse: House = {
       lockedOn: '8 Feb 2026',
     },
     {
-      id: 'bill-grace-elec',
+      id: 'bill-open-elec',
       utility: 'electricity',
       amount: 142.6,
       periodStart: '2026-05-16',
       periodEnd: '2026-06-15',
-      status: 'grace',
-      graceEndsOn: '2026-06-27',
+      status: 'open',
+      // Alice & Carol have confirmed their days; Bob hasn't looked yet.
+      confirmedMemberIds: ['m-alice', 'm-carol'],
     },
     {
-      id: 'bill-draft-water',
+      id: 'bill-open-water',
       utility: 'water',
       amount: 58.4,
       periodStart: '2026-06-01',
       periodEnd: '2026-06-30',
-      status: 'draft',
-    },
-  ],
-  changeLog: [
-    {
-      id: 'log-1',
-      at: '8 Feb 2026 · 21:14',
-      who: 'Admin',
-      text: 'Locked January electricity bill ($100.00).',
-    },
-    {
-      id: 'log-2',
-      at: '20 Jun 2026 · 09:02',
-      who: 'Admin',
-      text: 'Confirmed May–Jun electricity bill ($142.60) — 7-day grace window opened.',
+      status: 'open',
+      confirmedMemberIds: ['m-alice', 'm-carol'],
     },
   ],
 };
 
-/** Today, fixed for the prototype so grace countdowns are deterministic. */
+/** Today, fixed for the prototype so timestamps are deterministic. */
 export const TODAY = '2026-06-24';

@@ -12,11 +12,22 @@ export function money(n: number): string {
   return '$' + n.toFixed(2);
 }
 
-/** Inclusive count of a member's marked days that fall inside the bill period. */
-export function daysInPeriod(member: Member, bill: Bill): number {
-  return member.presence.filter(
+/** Inclusive number of calendar days in a bill's period. */
+export function periodLength(bill: Bill): number {
+  const start = new Date(bill.periodStart + 'T00:00:00').getTime();
+  const end = new Date(bill.periodEnd + 'T00:00:00').getTime();
+  return Math.round((end - start) / 86400000) + 1;
+}
+
+/**
+ * Home days a member counts for a bill: everyone is home by default, so it's
+ * the period length minus the away days that fall inside the period.
+ */
+export function homeDaysInPeriod(member: Member, bill: Bill): number {
+  const away = member.awayDays.filter(
     (k) => k >= bill.periodStart && k <= bill.periodEnd
   ).length;
+  return Math.max(0, periodLength(bill) - away);
 }
 
 /** True if an ISO date key falls inside the bill period (inclusive). */
@@ -92,10 +103,10 @@ export function calculate(
   members: Member[],
   rounding: RoundingConfig
 ): Calculation {
-  const participants = members.filter(
-    (m) => m.active || daysInPeriod(m, bill) > 0
-  );
-  const dayCounts = participants.map((m) => daysInPeriod(m, bill));
+  const excluded = new Set(bill.awayMemberIds ?? []);
+  // Active members, minus anyone confirmed away for the whole period.
+  const participants = members.filter((m) => m.active && !excluded.has(m.id));
+  const dayCounts = participants.map((m) => homeDaysInPeriod(m, bill));
   const totalDays = dayCounts.reduce((a, b) => a + b, 0);
 
   const exacts = participants.map((_, i) =>
@@ -137,20 +148,19 @@ function reconcile(
   if (totalDays === 0) {
     return {
       status: 'warn',
-      message: 'No one has recorded days for this period',
+      message: 'Everyone is marked away for the whole period',
       detail:
-        'Ask housemates to mark their presence for this bill before confirming, or this split can’t be calculated.',
+        'No one counts as home, so there’s no split to make. Check the away days, or confirm this bill applies to no one.',
     };
   }
 
-  // Actionable flag for a member with zero recorded days (never a bare error).
+  // Actionable flag: a member marked away for the entire period (0 home days).
   const empty = shares.find((s) => s.days === 0);
   if (empty) {
-    const p = `${bill.periodStart} – ${bill.periodEnd}`;
     return {
       status: 'warn',
-      message: `${empty.member.name} has no recorded days in this period`,
-      detail: `Their share can’t be calculated. Ask ${empty.member.name} to mark presence for ${p}, or confirm they were away the whole time.`,
+      message: `${empty.member.name} was away the whole period — 0 days home`,
+      detail: `They can’t take a share of this bill. Confirm ${empty.member.name} was away (they’ll be left out and pay nothing), or fix their days first.`,
     };
   }
 
@@ -183,7 +193,51 @@ export const UTILITY_META: Record<Bill['utility'], { label: string; icon: string
   electricity: { label: 'Electricity', icon: '⚡' },
   water: { label: 'Water', icon: '💧' },
   gas: { label: 'Gas', icon: '🔥' },
+  internet: { label: 'Internet', icon: '📶' },
+  other: { label: 'Other', icon: '🧾' },
 };
+
+/** Display name for a bill — the custom name for "other", else the preset. */
+export function billLabel(bill: Pick<Bill, 'utility' | 'customLabel'>): string {
+  return bill.customLabel?.trim() || UTILITY_META[bill.utility].label;
+}
+
+export function billIcon(bill: Pick<Bill, 'utility'>): string {
+  return UTILITY_META[bill.utility].icon;
+}
+
+export interface MonthGroup {
+  key: string; // 'YYYY-MM'
+  label: string; // 'June 2026'
+  bills: Bill[];
+  total: number; // combined amount paid to the landlord that cycle
+}
+
+/**
+ * Group bills into one combined bill per billing month (by the month each
+ * period ends). A house pays the landlord one combined amount per cycle —
+ * electricity + water + gas + anything else — so history is organised that way.
+ */
+export function groupBillsByMonth(bills: Bill[]): MonthGroup[] {
+  const map = new Map<string, Bill[]>();
+  for (const b of bills) {
+    const key = b.periodEnd.slice(0, 7);
+    const list = map.get(key);
+    if (list) list.push(b);
+    else map.set(key, [b]);
+  }
+  return [...map.entries()]
+    .sort((a, b) => (a[0] < b[0] ? 1 : -1))
+    .map(([key, bs]) => ({
+      key,
+      label: new Date(key + '-01T00:00:00').toLocaleDateString('en-GB', {
+        month: 'long',
+        year: 'numeric',
+      }),
+      bills: bs,
+      total: bs.reduce((s, x) => s + x.amount, 0),
+    }));
+}
 
 export function formatPeriod(bill: Bill): string {
   const fmt = (k: string) =>
@@ -197,11 +251,4 @@ export function formatPeriod(bill: Bill): string {
     Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
   const year = end.getFullYear();
   return `${fmt(bill.periodStart)} – ${fmt(bill.periodEnd)} ${year} · ${days} days`;
-}
-
-/** Whole days from TODAY until the grace window closes (clamped at 0). */
-export function daysUntil(target: string, today: string): number {
-  const t = new Date(target + 'T00:00:00').getTime();
-  const n = new Date(today + 'T00:00:00').getTime();
-  return Math.max(0, Math.round((t - n) / 86400000));
 }

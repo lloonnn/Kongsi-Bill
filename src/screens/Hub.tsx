@@ -1,97 +1,66 @@
-import { useApp } from '../store';
+import { useApp, type RouteName } from '../store';
 import { Frame, TopBar } from '../ui';
 
-interface HubItem {
-  emoji: string;
+interface Entry {
+  icon: string;
   title: string;
-  sub: string;
-  go: () => void;
-  admin?: boolean;
+  hint: string;
+  route: RouteName;
 }
 
 /**
- * Prototype launcher. Not a product screen — it's the entry point that lets a
- * reviewer jump into any flow using the one mock house as the running example.
+ * App entry. Reads like the real product: you say which person you are first,
+ * then see only that person's screens — so a housemate is never shown the
+ * bill-payer's "set up the house" as if it were their task.
  */
 export function Hub() {
   const { go } = useApp();
 
-  const member: HubItem[] = [
-    {
-      emoji: '👋',
-      title: 'Member first-tap join',
-      sub: 'Welcome → recognize-or-name → calendar',
-      go: () => go({ name: 'member-join' }),
-    },
-    {
-      emoji: '🗓️',
-      title: 'Returning member landing',
-      sub: 'State-aware: no bills, grace nudge, or just-locked split',
-      go: () => go({ name: 'member-landing' }),
-    },
+  const payer: Entry[] = [
+    { icon: '🏠', title: 'Create a new house', hint: 'First time setting up', route: 'admin-setup' },
+    { icon: '📋', title: 'Open my house', hint: 'Bills, splits, history', route: 'admin-dashboard' },
   ];
 
-  const admin: HubItem[] = [
-    {
-      emoji: '🏠',
-      title: 'Create a house (admin setup)',
-      sub: 'Codes → save-codes (weighted) → housemates → share link',
-      go: () => go({ name: 'admin-setup' }),
-      admin: true,
-    },
-    {
-      emoji: '📊',
-      title: 'Manage the house (admin)',
-      sub: 'Add bill, calculate & validate, confirm, history, export',
-      go: () => go({ name: 'admin-dashboard' }),
-      admin: true,
-    },
+  const housemate: Entry[] = [
+    { icon: '🔗', title: 'Join a house', hint: 'Opened an invite link', route: 'member-join' },
+    { icon: '🏡', title: 'Open my home page', hint: 'Coming back', route: 'member-landing' },
   ];
+
+  const Row = ({ e, admin }: { e: Entry; admin?: boolean }) => (
+    <button
+      className={`hub-btn ${admin ? 'admin' : ''}`}
+      onClick={() => go({ name: e.route })}
+    >
+      <span className="hub-num">{e.icon}</span>
+      <span style={{ flex: 1 }}>
+        <span className="hb-title">{e.title}</span>
+        <span className="hb-sub">{e.hint}</span>
+      </span>
+      <span className="hb-go">›</span>
+    </button>
+  );
 
   return (
     <Frame>
-      <TopBar icon="LD" name="Kongsi Bill" sub="Click-through prototype" />
+      <TopBar icon="LD" name="Kongsi Bill" sub="Welcome" />
       <div className="screen">
         <div className="card">
-          <div className="eyebrow-pill">Prototype hub</div>
           <h1 className="title">
-            Day-weighted bill <span className="accent">splitting</span>
+            Split bills by <span className="accent">days at home</span>
           </h1>
-          <p className="sub">
-            Running example: <b>Lorong Damai 12</b> — Alice, Bob &amp; Carol, with a
-            locked January electricity bill, one in its grace window, and one draft.
-            Pick a flow to walk through.
-          </p>
+          <p className="sub">Which one are you?</p>
         </div>
 
-        <div className="hub-section-label">Member experience</div>
-        {member.map((it) => (
-          <HubButton key={it.title} item={it} />
+        <div className="hub-section-label">I’m the bill-payer</div>
+        {payer.map((e) => (
+          <Row key={e.route} e={e} admin />
         ))}
 
-        <div className="hub-section-label">Admin territory</div>
-        {admin.map((it) => (
-          <HubButton key={it.title} item={it} />
+        <div className="hub-section-label">I’m a housemate</div>
+        {housemate.map((e) => (
+          <Row key={e.route} e={e} />
         ))}
-
-        <p className="muted-note" style={{ marginTop: 18, textAlign: 'center' }}>
-          Mock data only — nothing persists across reloads.
-        </p>
       </div>
     </Frame>
-  );
-}
-
-function HubButton({ item }: { item: HubItem }) {
-  return (
-    <button className={`hub-btn ${item.admin ? 'admin' : ''}`} onClick={item.go}>
-      <span className="hub-emoji">{item.emoji}</span>
-      <span>
-        <span className="hb-title">{item.title}</span>
-        <span className="hb-sub" style={{ display: 'block' }}>
-          {item.sub}
-        </span>
-      </span>
-    </button>
   );
 }

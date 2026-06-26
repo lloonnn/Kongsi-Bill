@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { useApp } from '../store';
-import { BackLink, ExtrapolatedTag, Frame, TopBar } from '../ui';
+import { ExtrapolatedTag, Frame, ScreenNav, TopBar } from '../ui';
 
 /** Mock export flow — no real XLSX, just a confirmation. Extrapolated. */
 export function AdminExport() {
-  const { house, back } = useApp();
+  const { house } = useApp();
   const [done, setDone] = useState<string | null>(null);
 
   const exportIt = (what: string) => {
@@ -16,7 +16,7 @@ export function AdminExport() {
     <Frame>
       <TopBar icon="LD" name={house.name} sub="Export" admin />
       <div className="screen">
-        <BackLink onClick={back} />
+        <ScreenNav />
         <div className="card admin">
           <ExtrapolatedTag />
           <div className="eyebrow-pill admin">📤 Export</div>

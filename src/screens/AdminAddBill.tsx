@@ -1,6 +1,6 @@
 import { useState, type CSSProperties } from 'react';
 import { useApp } from '../store';
-import { BackLink, ExtrapolatedTag, Frame, ProgressRow, TopBar } from '../ui';
+import { ExtrapolatedTag, Frame, ProgressRow, ScreenNav, TopBar } from '../ui';
 import { UTILITY_META } from '../calc';
 import type { Utility } from '../types';
 
@@ -18,20 +18,28 @@ const dateStyle: CSSProperties = {
   marginTop: 8,
 };
 
-/** Add a new bill (draft). Extrapolated — own layout, locked tokens. */
+/** Add a new bill (open). Extrapolated — own layout, locked tokens. */
 export function AdminAddBill() {
-  const { house, go, back, addBill } = useApp();
+  const { house, go, addBill } = useApp();
   const [utility, setUtility] = useState<Utility>('water');
+  const [customLabel, setCustomLabel] = useState('');
   const [amount, setAmount] = useState('');
   const [start, setStart] = useState('2026-06-01');
   const [end, setEnd] = useState('2026-06-30');
 
   const amt = parseFloat(amount);
-  const valid = !Number.isNaN(amt) && amt > 0 && start <= end;
+  const customOk = utility !== 'other' || customLabel.trim().length > 0;
+  const valid = !Number.isNaN(amt) && amt > 0 && start <= end && customOk;
 
   const save = () => {
     if (!valid) return;
-    const id = addBill({ utility, amount: amt, periodStart: start, periodEnd: end });
+    const id = addBill({
+      utility,
+      customLabel: utility === 'other' ? customLabel.trim() : undefined,
+      amount: amt,
+      periodStart: start,
+      periodEnd: end,
+    });
     go({ name: 'admin-calculate', billId: id });
   };
 
@@ -39,7 +47,7 @@ export function AdminAddBill() {
     <Frame>
       <TopBar icon="LD" name={house.name} sub="Add a bill" admin />
       <div className="screen">
-        <BackLink onClick={back} />
+        <ScreenNav />
         <ProgressRow total={2} done={1} admin />
 
         <div className="card admin">
@@ -51,8 +59,15 @@ export function AdminAddBill() {
             split on the next screen before anything is confirmed.
           </p>
 
-          <span className="field-label">Utility</span>
-          <div className="seg-choice">
+          <span className="field-label">Type of bill</span>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(3, 1fr)',
+              gap: 8,
+              marginTop: 10,
+            }}
+          >
             {(Object.keys(UTILITY_META) as Utility[]).map((u) => (
               <div
                 key={u}
@@ -63,6 +78,17 @@ export function AdminAddBill() {
               </div>
             ))}
           </div>
+
+          {utility === 'other' && (
+            <input
+              type="text"
+              className="field"
+              placeholder="Name this bill (e.g. Cleaning, Cooking gas)"
+              value={customLabel}
+              onChange={(e) => setCustomLabel(e.target.value)}
+              style={{ marginTop: 10 }}
+            />
+          )}
 
           <span className="field-label">Total amount</span>
           <input

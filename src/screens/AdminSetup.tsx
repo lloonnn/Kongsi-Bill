@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useApp } from '../store';
-import { Frame, ProgressRow, TopBar } from '../ui';
+import { Frame, ProgressRow, ScreenNav, TopBar } from '../ui';
 import type { AvatarTone } from '../types';
 
 const TONES: AvatarTone[] = ['accent', 'alt2', 'alt3'];
@@ -53,6 +53,7 @@ export function AdminSetup() {
         admin
       />
       <div className="screen">
+        <ScreenNav onBack={step === 1 ? undefined : () => setStep((s) => s - 1)} />
         <ProgressRow total={5} done={step} admin />
 
         {step === 1 && (
@@ -86,37 +87,36 @@ export function AdminSetup() {
         {step === 2 && (
           <div className="card admin">
             <div className="eyebrow-pill admin">✓ House created</div>
-            <h1 className="title">
-              Here are your
-              <br />
-              house codes
-            </h1>
+            <h1 className="title">Two things to know</h1>
             <p className="sub">
-              Two codes control access. The next step is saving them — there's no
-              recovery if both are lost.
+              One you share so people can join. One you keep to yourself.
             </p>
 
-            <div className="code-zone">
-              <div className="code-zone-label">Room ID</div>
-              <div className="code-zone-value">LD12-7F2</div>
-            </div>
             <div className="code-zone member-zone">
-              <div className="code-zone-label">Member code · share freely</div>
-              <div className="code-zone-value">XYZ-4821</div>
+              <div className="code-zone-label">1 · Share this — the join code</div>
+              <div className="code-with-copy">
+                <span className="code-zone-value">XYZ-4821</span>
+                <button className="copy-btn" onClick={() => flash('code')}>
+                  {copied === 'code' ? '✓ Copied' : 'Copy'}
+                </button>
+              </div>
               <div className="code-zone-hint">
-                Goes in the join link, lives in your group chat.
+                Housemates use this to join. On the last step you'll get a
+                tap-to-join link that serves as an alternative way to join your house.
               </div>
             </div>
+
             <div className="code-zone admin-zone">
-              <div className="code-zone-label">Admin code · keep private</div>
+              <div className="code-zone-label">2 · Keep private — your admin key</div>
               <div className="code-zone-value">QRP-9034</div>
               <div className="code-zone-hint">
-                Yours only. Never put this in a link.
+                Proves you're the one who runs this house. You'll need it to
+                confirm and lock bills, and to add or remove housemates.
               </div>
             </div>
 
             <button className="btn-primary" onClick={() => setStep(3)}>
-              Continue to save codes
+              Continue
             </button>
           </div>
         )}
@@ -127,19 +127,19 @@ export function AdminSetup() {
               ⚠️ This is the one step you can't undo later
             </div>
             <h1 className="title sm">
-              Save these codes
+              Save your admin key
               <br />
               before continuing
             </h1>
             <p className="sub">
-              If you lose both codes with no one else holding them, this house
-              can't be recovered. Copy them somewhere safe, or download a backup
-              file.
+              If you lose your admin key and no one else has it, no one can get
+              you back into this house. Copy it somewhere safe, or download a
+              backup.
             </p>
 
             <div className="action-row">
               <button className="action-btn" onClick={() => flash('copy')}>
-                {copied === 'copy' ? '✓ Copied' : '📋 Copy all codes'}
+                {copied === 'copy' ? '✓ Copied' : '📋 Copy admin key'}
               </button>
               <button className="action-btn" onClick={() => flash('dl')}>
                 {copied === 'dl' ? '✓ Downloaded' : '⬇ Download backup'}
@@ -153,7 +153,7 @@ export function AdminSetup() {
                 onChange={(e) => setCodesSaved(e.target.checked)}
               />
               <span className="confirm-text">
-                I've saved my codes somewhere safe outside this app
+                I've saved my admin key somewhere safe outside this app
               </span>
             </label>
 
@@ -173,8 +173,8 @@ export function AdminSetup() {
             <div className="eyebrow-pill admin">👥 Add housemates</div>
             <h1 className="title sm">Who lives at {houseName}?</h1>
             <p className="sub">
-              Add everyone who'll record presence. You can add or remove people
-              anytime later.
+              Add everyone who lives here — <b>including yourself</b>, since you
+              split the bills too. You can add or remove people anytime later.
             </p>
 
             <div style={{ marginTop: 16 }}>
@@ -218,23 +218,41 @@ export function AdminSetup() {
         {step === 5 && (
           <div className="card admin">
             <div className="eyebrow-pill admin">🔗 Ready to go</div>
-            <h1 className="title sm">
-              Share the join
-              <br />
-              link with your house
-            </h1>
+            <h1 className="title sm">Invite your house</h1>
             <p className="sub">
-              Paste this into your house group chat. Anyone who taps it joins
-              instantly — no typing, no app install.
+              Two ways to join the same house — send whichever is easier.
             </p>
 
-            <div className="link-zone">
-              <span className="link-text">
-                kongsibill.pages.dev/join?house=LD12-7F2&amp;code=XYZ4821
-              </span>
-              <button className="copy-btn" onClick={() => flash('link')}>
-                {copied === 'link' ? '✓' : 'Copy'}
-              </button>
+            <div className="code-zone member-zone">
+              <div className="code-zone-label">Easiest — tap-to-join link</div>
+              <div
+                className="link-zone"
+                style={{ marginTop: 8, background: '#fff' }}
+              >
+                <span className="link-text">
+                  kongsibill.pages.dev/join?house=LD12-7F2&amp;code=XYZ-4821
+                </span>
+                <button className="copy-btn" onClick={() => flash('link')}>
+                  {copied === 'link' ? '✓' : 'Copy'}
+                </button>
+              </div>
+              <div className="code-zone-hint">
+                Paste it in the group chat — one tap and they're in, no typing.
+              </div>
+            </div>
+
+            <div className="code-zone member-zone">
+              <div className="code-zone-label">No link? — the join code</div>
+              <div className="code-with-copy">
+                <span className="code-zone-value">XYZ-4821</span>
+                <button className="copy-btn" onClick={() => flash('code')}>
+                  {copied === 'code' ? '✓ Copied' : 'Copy'}
+                </button>
+              </div>
+              <div className="code-zone-hint">
+                They open Kongsi Bill, tap “Join a house”, and type this. It's the
+                same code that's already inside the link above.
+              </div>
             </div>
 
             <button
@@ -243,17 +261,9 @@ export function AdminSetup() {
             >
               Done — go to house
             </button>
-            <button className="btn-ghost" onClick={() => go({ name: 'hub' })}>
-              Share house info card instead
-            </button>
           </div>
         )}
 
-        {step > 1 && (
-          <button className="btn-ghost" onClick={() => setStep((s) => s - 1)}>
-            ‹ Back a step
-          </button>
-        )}
       </div>
     </Frame>
   );

@@ -1,25 +1,42 @@
 import { useState } from 'react';
 import { useApp } from '../store';
-import { Avatar, Frame, ProgressRow, TopBar } from '../ui';
+import { Avatar, Frame, ProgressRow, ScreenNav, TopBar } from '../ui';
 import { Calendar } from '../Calendar';
 
-type Step = 'welcome' | 'recognize' | 'name' | 'calendar';
+type Step = 'code' | 'welcome' | 'recognize' | 'name' | 'calendar';
+
+/** Strip spaces/dashes and upper-case so "xyz4821" matches "XYZ-4821". */
+function normalizeCode(s: string): string {
+  return s.replace(/[^a-z0-9]/gi, '').toUpperCase();
+}
 
 /**
- * Member first-tap flow: welcome → recognize-or-name → calendar.
+ * Housemate join flow.
  *
- * Recognition: a real build would skip straight to the calendar for a known
- * device. Since the prototype can't read a device identity, the welcome screen
- * offers both paths — "Continue" (unrecognized → member list) and a dev
- * shortcut that simulates being recognized.
+ * Entry from the in-app "Join a house" button starts at the code step (they
+ * don't have a house attached yet). Tapping the invite link instead would
+ * arrive with the code already in the URL and skip straight to "welcome".
+ *   code → welcome → recognize-or-name → calendar
  */
 export function MemberJoin() {
-  const { house, go, setCurrentMember, addMember } = useApp();
-  const [step, setStep] = useState<Step>('welcome');
+  const { house, go, setCurrentMember, addMember, confirmDays } = useApp();
+  const [step, setStep] = useState<Step>('code');
+  const [codeInput, setCodeInput] = useState('');
+  const [codeError, setCodeError] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState('Divya');
 
   const activeMembers = house.members.filter((m) => m.active);
+  const member = activeId ? house.members.find((m) => m.id === activeId) : null;
+
+  const submitCode = () => {
+    if (normalizeCode(codeInput) === normalizeCode(house.memberCode)) {
+      setCodeError(false);
+      setStep('welcome');
+    } else {
+      setCodeError(true);
+    }
+  };
 
   const pickExisting = (id: string) => {
     setActiveId(id);
@@ -28,53 +45,85 @@ export function MemberJoin() {
   };
 
   const joinAsNew = () => {
-    const member = addMember(draftName.trim() || 'New member');
-    setActiveId(member.id);
-    setCurrentMember(member.id);
+    const m = addMember(draftName.trim() || 'New member');
+    setActiveId(m.id);
+    setCurrentMember(m.id);
     setStep('calendar');
   };
 
-  const member = activeId ? house.members.find((m) => m.id === activeId) : null;
+  // back control: first step exits to Home, otherwise steps backward
+  const prev: Record<Step, () => void> = {
+    code: () => go({ name: 'hub' }),
+    welcome: () => setStep('code'),
+    recognize: () => setStep('welcome'),
+    name: () => setStep('recognize'),
+    calendar: () => setStep('recognize'),
+  };
+
+  const subs: Record<Step, string> = {
+    code: 'Enter your join code',
+    welcome: 'Joining',
+    recognize: 'Who are you?',
+    name: 'New here',
+    calendar: member?.name ?? 'Member',
+  };
 
   return (
     <Frame>
       <TopBar
-        icon="LD"
-        name="Lorong Damai 12"
-        sub={
-          step === 'welcome'
-            ? 'Member sign-in'
-            : step === 'recognize'
-            ? 'Who are you?'
-            : step === 'name'
-            ? 'New member'
-            : (member?.name ?? 'Member')
-        }
+        icon={step === 'code' ? '🔗' : 'LD'}
+        name={step === 'code' ? 'Join a house' : 'Lorong Damai 12'}
+        sub={subs[step]}
       />
       <div className="screen">
+        <ScreenNav onBack={step === 'code' ? undefined : prev[step]} />
+
+        {step === 'code' && (
+          <div className="card">
+            <div className="eyebrow-pill">🔗 Join a house</div>
+            <h1 className="title sm">Enter your join code</h1>
+            <p className="sub">
+              Enter the code your housemates shared with you to join the house.
+            </p>
+            <input
+              type="text"
+              className="field"
+              placeholder="e.g. XYZ-4821"
+              value={codeInput}
+              onChange={(e) => {
+                setCodeInput(e.target.value);
+                setCodeError(false);
+              }}
+              onKeyDown={(e) => e.key === 'Enter' && submitCode()}
+            />
+            {codeError && (
+              <p className="muted-note" style={{ color: 'var(--warn-ink)', marginTop: 8 }}>
+                That code didn’t match a house. Check it and try again.
+              </p>
+            )}
+            <button className="btn-primary" disabled={!codeInput.trim()} onClick={submitCode}>
+              Join
+            </button>
+          </div>
+        )}
+
         {step === 'welcome' && (
           <>
             <ProgressRow total={3} done={1} />
             <div className="card">
-              <div className="eyebrow-pill">👋 Welcome</div>
+              <div className="eyebrow-pill">✓ House found</div>
               <h1 className="title">
-                Split bills by
+                You’re joining
                 <br />
-                <span className="accent">days actually home</span>
+                <span className="accent">Lorong Damai 12</span>
               </h1>
               <p className="sub">
-                Lorong Damai 12 uses Kongsi Bill so electricity, water, and gas
-                split fairly — by who was really there, not split evenly.
+                Bills here are split by how many days each person was home.
+                You’re counted home by default — just mark the days you were
+                away, and you only pay for the days you were here.
               </p>
               <button className="btn-primary" onClick={() => setStep('recognize')}>
                 Continue
-              </button>
-              <button
-                className="btn-ghost"
-                onClick={() => pickExisting('m-alice')}
-                title="Simulates a device that already recognizes the member"
-              >
-                (dev) I'm a recognized device → skip to calendar
               </button>
             </div>
           </>
@@ -90,22 +139,18 @@ export function MemberJoin() {
                 of these?
               </h1>
               <p className="sub">
-                Tap your name so we don't create a duplicate for the same person.
+                Tap your name so we don’t create a duplicate for the same person.
               </p>
               <div style={{ marginTop: 16 }}>
                 {activeMembers.map((m) => (
-                  <div
-                    key={m.id}
-                    className="member-row"
-                    onClick={() => pickExisting(m.id)}
-                  >
+                  <div key={m.id} className="member-row" onClick={() => pickExisting(m.id)}>
                     <Avatar member={m} />
                     <div className="member-name">{m.name}</div>
                   </div>
                 ))}
               </div>
               <button className="btn-ghost" onClick={() => setStep('name')}>
-                No, I'm new here
+                No, I’m new here
               </button>
             </div>
           </>
@@ -138,17 +183,14 @@ export function MemberJoin() {
         {step === 'calendar' && member && (
           <>
             <div className="greeting-line">
-              Hi {member.name}, mark the days you were home
+              Hi {member.name}, mark any days you were away
             </div>
             <Calendar
               memberId={member.id}
-              bill={house.bills.find((b) => b.status === 'grace')}
+              bills={house.bills.filter((b) => b.status === 'open')}
               initial={{ year: 2026, month: 5 }}
             />
-            <button
-              className="btn-primary"
-              onClick={() => go({ name: 'member-landing' })}
-            >
+            <button className="btn-primary" onClick={() => go({ name: 'member-landing' })}>
               Save my days
             </button>
           </>

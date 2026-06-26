@@ -1,23 +1,17 @@
 import { useState } from 'react';
 import { useApp } from '../store';
-import { Avatar, ExtrapolatedTag, Frame, TopBar } from '../ui';
+import { Avatar, ExtrapolatedTag, Frame, ScreenNav, TopBar } from '../ui';
 import { Calendar } from '../Calendar';
+import { ShareCodes } from '../ShareCodes';
 import { WorkingCard } from '../BillBreakdown';
-import {
-  daysInPeriod,
-  daysUntil,
-  formatPeriod,
-  money,
-  NO_ROUNDING,
-  UTILITY_META,
-} from '../calc';
+import { billIcon, billLabel, formatPeriod, money, NO_ROUNDING } from '../calc';
 
 // Four landing states the prototype can simulate via the dev toggle.
-type LandingState = 'none' | 'grace' | 'locked' | 'calm';
+type LandingState = 'none' | 'open' | 'locked' | 'calm';
 
 const STATE_LABELS: Record<LandingState, string> = {
   none: 'No bills',
-  grace: 'Grace nudge',
+  open: 'Open bill',
   locked: 'Just locked',
   calm: 'Calm',
 };
@@ -29,16 +23,17 @@ const STATE_LABELS: Record<LandingState, string> = {
  */
 export function MemberLanding() {
   const { house, currentMemberId, go } = useApp();
-  const [state, setState] = useState<LandingState>('grace');
+  const [state, setState] = useState<LandingState>('open');
 
   const member = house.members.find((m) => m.id === currentMemberId) ?? house.members[0];
-  const graceBill = house.bills.find((b) => b.status === 'grace');
+  const openBill = house.bills.find((b) => b.status === 'open');
   const lockedBill = house.bills.find((b) => b.status === 'locked');
 
   return (
     <Frame>
       <TopBar icon="LD" name="Lorong Damai 12" sub={member.name} />
       <div className="screen">
+        <ScreenNav />
         {/* dev-only state simulator */}
         <div className="card" style={{ marginBottom: 14 }}>
           <ExtrapolatedTag />
@@ -60,76 +55,89 @@ export function MemberLanding() {
           Hi {member.name}, here's where things stand
         </div>
 
-        {state === 'none' && <NoBills member={member} />}
-        {state === 'grace' && graceBill && (
-          <GraceNudge member={member} billId={graceBill.id} />
-        )}
+        {state === 'none' && <NoBills />}
+        {state === 'open' && openBill && <OpenBill member={member} />}
         {state === 'locked' && lockedBill && (
           <JustLocked billId={lockedBill.id} />
         )}
         {state === 'calm' && <Calm member={member} />}
 
-        <button className="btn-ghost" onClick={() => go({ name: 'hub' })}>
-          Back to prototype hub
+        <button className="btn-secondary" onClick={() => go({ name: 'member-history' })}>
+          See all bills (everyone)
         </button>
+
+        <ShareCodes />
       </div>
     </Frame>
   );
 }
 
-function NoBills({ member }: { member: { id: string } }) {
+function NoBills() {
   return (
-    <>
-      <div className="card">
-        <div className="eyebrow-pill">Nothing to split yet</div>
-        <p className="sub">
-          No bills have been added. Keep marking the days you're home — your
-          count is ready the moment a bill arrives.
-        </p>
-      </div>
-      <Calendar memberId={member.id} initial={{ year: 2026, month: 5 }} />
-    </>
+    <div className="card">
+      <div className="eyebrow-pill">Nothing to split yet</div>
+      <p className="sub">
+        No bills have been added. When one arrives you’ll be counted home by
+        default — you’ll only mark the days you were away. Nothing to do for now.
+      </p>
+    </div>
   );
 }
 
-function GraceNudge({ member, billId }: { member: { id: string }; billId: string }) {
-  const { house, today } = useApp();
-  const bill = house.bills.find((b) => b.id === billId)!;
-  const m = house.members.find((x) => x.id === member.id)!;
-  const myDays = daysInPeriod(m, bill);
-  const left = bill.graceEndsOn ? daysUntil(bill.graceEndsOn, today) : 0;
-  const meta = UTILITY_META[bill.utility];
+function OpenBill({ member }: { member: { id: string } }) {
+  const { house, confirmDays } = useApp();
+  const openBills = house.bills.filter((b) => b.status === 'open');
+  const confirmed =
+    openBills.length > 0 &&
+    openBills.every((b) => b.confirmedMemberIds?.includes(member.id));
 
   return (
     <>
       <div className="prompt-strip">
-        <span className="pico">🔔</span>
+        <span className="pico">🗓️</span>
         <div>
-          Your days for the {meta.label.toLowerCase()} bill look light — only{' '}
-          <b>{myDays} day{myDays === 1 ? '' : 's'}</b> recorded. There's still time
-          to fix it before the split locks.
+          {openBills.length === 1 ? 'There’s an open bill.' : `There are ${openBills.length} open bills.`}{' '}
+          You’re counted home by default — just mark any days you were away. No
+          rush, they lock once everyone’s done.
         </div>
       </div>
 
-      <div className="card">
-        <div className="row-between">
-          <div>
-            <div className="util-label" style={{ fontSize: 12 }}>
-              {meta.label} · grace window
+      {openBills.map((bill) => (
+        <div className="card" key={bill.id}>
+          <div className="row-between">
+            <div>
+              <div className="util-label" style={{ fontSize: 12 }}>
+                {billLabel(bill)} · open
+              </div>
+              <div className="util-amount tnum" style={{ fontSize: 22 }}>
+                {money(bill.amount)}
+              </div>
+              <div className="util-period">{formatPeriod(bill)}</div>
             </div>
-            <div className="util-amount tnum" style={{ fontSize: 22 }}>
-              {money(bill.amount)}
-            </div>
-            <div className="util-period">{formatPeriod(bill)}</div>
+            <div className="bill-icon">{billIcon(bill)}</div>
           </div>
-          <span className="countdown">⏳ {left} day{left === 1 ? '' : 's'} left</span>
         </div>
-      </div>
+      ))}
 
-      <Calendar memberId={member.id} bill={bill} initial={{ year: 2026, month: 4 }} />
+      <Calendar memberId={member.id} bills={openBills} initial={{ year: 2026, month: 4 }} />
       <p className="muted-note" style={{ textAlign: 'center', marginTop: 4 }}>
-        Tap the dotted days you were actually home for this period.
+        Orange = counted home. Tap a day to mark yourself away — each bill counts
+        only the dates in its own period.
       </p>
+
+      {confirmed ? (
+        <div className="recon-strip ok" style={{ marginTop: 14 }}>
+          <span>✓</span>
+          <div>
+            Your days are confirmed. Edit a day above any time before it locks —
+            you’ll just need to confirm again.
+          </div>
+        </div>
+      ) : (
+        <button className="btn-primary" onClick={() => confirmDays(member.id)}>
+          These look right — confirm my days
+        </button>
+      )}
     </>
   );
 }
@@ -152,25 +160,19 @@ function Calm({ member }: { member: { id: string; name: string } }) {
   const { house } = useApp();
   const m = house.members.find((x) => x.id === member.id)!;
   return (
-    <>
-      <div className="card">
-        <div className="eyebrow-pill">All caught up</div>
-        <h1 className="title sm">Nothing needs you right now</h1>
-        <p className="sub">
-          No open bills, nothing to confirm. You can still record days as you go —
-          they'll be ready for the next bill.
-        </p>
-        <div className="row-between" style={{ marginTop: 16 }}>
-          <div className="person-left">
-            <Avatar member={m} size="md" />
-            <div className="person-name">{m.name}</div>
-          </div>
-          <span className="count-pill tnum">
-            {m.presence.length} <span className="accent-num">days logged</span>
-          </span>
+    <div className="card">
+      <div className="eyebrow-pill">All caught up</div>
+      <h1 className="title sm">Nothing needs you right now</h1>
+      <p className="sub">
+        No open bills, nothing to confirm. When the next bill arrives you’ll be
+        counted home by default — you’ll only need to note any days you were away.
+      </p>
+      <div className="row-between" style={{ marginTop: 16 }}>
+        <div className="person-left">
+          <Avatar member={m} size="md" />
+          <div className="person-name">{m.name}</div>
         </div>
       </div>
-      <Calendar memberId={member.id} initial={{ year: 2026, month: 5 }} />
-    </>
+    </div>
   );
 }

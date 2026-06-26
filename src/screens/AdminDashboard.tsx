@@ -1,11 +1,11 @@
 import { useApp } from '../store';
-import { Avatar, BackLink, Frame, StatusPill, TopBar } from '../ui';
-import { daysUntil, formatPeriod, money, UTILITY_META } from '../calc';
+import { Avatar, Frame, ScreenNav, StatusPill, TopBar } from '../ui';
+import { billIcon, billLabel, formatPeriod, money } from '../calc';
 import type { Bill } from '../types';
 
 /** Admin house home — bill list + quick actions into every admin tool. */
 export function AdminDashboard() {
-  const { house, go, back, today } = useApp();
+  const { house, go } = useApp();
   const activeMembers = house.members.filter((m) => m.active);
 
   const openBill = (b: Bill) =>
@@ -19,7 +19,7 @@ export function AdminDashboard() {
     <Frame>
       <TopBar icon="LD" name={house.name} sub="House overview" admin />
       <div className="screen gap">
-        <BackLink onClick={back} label="Hub" />
+        <ScreenNav />
 
         <div className="card admin">
           <div className="row-between">
@@ -37,6 +37,13 @@ export function AdminDashboard() {
               Manage
             </button>
           </div>
+          <button
+            className="btn-primary"
+            style={{ marginTop: 16 }}
+            onClick={() => go({ name: 'admin-my-days' })}
+          >
+            🗓️ Mark my own days
+          </button>
         </div>
 
         <div className="card admin">
@@ -50,25 +57,15 @@ export function AdminDashboard() {
           </div>
 
           {house.bills.map((b) => {
-            const meta = UTILITY_META[b.utility];
-            const left =
-              b.status === 'grace' && b.graceEndsOn
-                ? daysUntil(b.graceEndsOn, today)
-                : null;
             return (
               <button key={b.id} className="list-row" onClick={() => openBill(b)}>
                 <div className="person-left">
                   <div className="bill-icon" style={{ width: 38, height: 38, fontSize: 17 }}>
-                    {meta.icon}
+                    {billIcon(b)}
                   </div>
                   <div>
-                    <div className="lr-title">{meta.label}</div>
+                    <div className="lr-title">{billLabel(b)}</div>
                     <div className="lr-sub">{formatPeriod(b)}</div>
-                    {left !== null && (
-                      <div className="lr-sub" style={{ color: 'var(--warn-ink)' }}>
-                        ⏳ {left} day{left === 1 ? '' : 's'} of grace left
-                      </div>
-                    )}
                   </div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
@@ -85,6 +82,10 @@ export function AdminDashboard() {
         <div className="card admin">
           <div className="working-title">House tools</div>
           <div className="stack-sm" style={{ marginTop: 8 }}>
+            <button className="list-row" onClick={() => go({ name: 'admin-edit-days' })}>
+              <span className="lr-title">🗓️ Mark days for a housemate</span>
+              <span className="lr-sub">›</span>
+            </button>
             <button className="list-row" onClick={() => go({ name: 'admin-history' })}>
               <span className="lr-title">📜 View history</span>
               <span className="lr-sub">›</span>
@@ -93,12 +94,8 @@ export function AdminDashboard() {
               <span className="lr-title">📤 Export</span>
               <span className="lr-sub">›</span>
             </button>
-            <button className="list-row" onClick={() => go({ name: 'admin-changelog' })}>
-              <span className="lr-title">🪵 Change log</span>
-              <span className="lr-sub">›</span>
-            </button>
-            <button className="list-row" onClick={() => go({ name: 'admin-regenerate' })}>
-              <span className="lr-title">🔑 Regenerate leaked code</span>
+            <button className="list-row" onClick={() => go({ name: 'admin-invite' })}>
+              <span className="lr-title">🔗 Invite &amp; share codes</span>
               <span className="lr-sub">›</span>
             </button>
           </div>

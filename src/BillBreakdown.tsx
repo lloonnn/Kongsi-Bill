@@ -1,26 +1,26 @@
 import type { Bill, Member, RoundingConfig } from './types';
 import {
+  billIcon,
+  billLabel,
   calculate,
   formatPeriod,
   money,
   NO_ROUNDING,
-  UTILITY_META,
   type Calculation,
 } from './calc';
 import { Avatar } from './ui';
 
 /** Bill summary header card (utility, amount, period). Admin-context card. */
 export function BillSummaryCard({ bill }: { bill: Bill }) {
-  const meta = UTILITY_META[bill.utility];
   return (
     <div className="card admin bill-card">
       <div className="util-row">
         <div>
-          <div className="util-label">{meta.label}</div>
+          <div className="util-label">{billLabel(bill)}</div>
           <div className="util-amount tnum">{money(bill.amount)}</div>
           <div className="util-period">{formatPeriod(bill)}</div>
         </div>
-        <div className="bill-icon">{meta.icon}</div>
+        <div className="bill-icon">{billIcon(bill)}</div>
       </div>
     </div>
   );

@@ -1,23 +1,21 @@
 import { useState } from 'react';
 import { useApp } from '../store';
-import { BackLink, ExtrapolatedTag, Frame, StatusPill, TopBar } from '../ui';
+import { ExtrapolatedTag, Frame, ScreenNav, StatusPill, TopBar } from '../ui';
 import { BillSummaryCard, WorkingCard } from '../BillBreakdown';
-import { NO_ROUNDING } from '../calc';
+import { money, NO_ROUNDING } from '../calc';
 import type { BillStatus } from '../types';
 
 const LIFECYCLE: { key: BillStatus; label: string }[] = [
-  { key: 'draft', label: 'Draft' },
-  { key: 'grace', label: 'Confirmed · grace' },
-  { key: 'locked', label: 'Locked' },
+  { key: 'open', label: 'Open · marking days' },
+  { key: 'locked', label: 'Locked · final' },
 ];
 
 /**
  * Single bill detail: lifecycle state, per-person breakdown, and — for locked
- * bills — the admin-override-after-lock path (every override is logged to the
- * visible change log). Extrapolated screen.
+ * bills — the re-open / admin-override-after-lock paths. Extrapolated screen.
  */
 export function AdminBillDetail() {
-  const { house, route, back, go, overrideLockedBill } = useApp();
+  const { house, route, go, overrideLockedBill, reopenBill } = useApp();
   const bill = house.bills.find((b) => b.id === route.billId);
   const [overriding, setOverriding] = useState(false);
   const [newAmount, setNewAmount] = useState('');
@@ -27,7 +25,7 @@ export function AdminBillDetail() {
       <Frame>
         <TopBar icon="LD" name={house.name} sub="Bill" admin />
         <div className="screen">
-          <BackLink onClick={back} />
+          <ScreenNav />
           <div className="card admin">
             <p className="sub">That bill no longer exists.</p>
           </div>
@@ -50,7 +48,7 @@ export function AdminBillDetail() {
     <Frame>
       <TopBar icon="LD" name={house.name} sub="Bill detail" admin />
       <div className="screen gap">
-        <BackLink onClick={back} />
+        <ScreenNav />
 
         {/* lifecycle stepper */}
         <div className="card admin">
@@ -91,24 +89,49 @@ export function AdminBillDetail() {
         <BillSummaryCard bill={bill} />
         <WorkingCard bill={bill} members={house.members} rounding={NO_ROUNDING} />
 
-        {/* admin override after lock */}
+        {/* fixing a locked bill: re-open to fix days, or override the amount */}
         {bill.status === 'locked' && (
           <div className="card admin">
-            <div className="working-title">Admin override</div>
+            <div className="working-title">Spotted a mistake?</div>
             {!overriding ? (
               <>
-                <p className="muted-note" style={{ marginBottom: 12 }}>
-                  Locked bills are fixed. If the amount was wrong, you can override
-                  it — the change is recorded in the house change log for everyone
-                  to see.
+                <p className="muted-note" style={{ marginBottom: 14 }}>
+                  This bill is locked, but you can still fix a mistake. Hover (or
+                  tap) an option to see what it does.
                 </p>
-                <button className="btn-secondary" onClick={() => setOverriding(true)}>
-                  Override locked amount
-                </button>
+
+                <div className="fix-option" tabIndex={0} style={{ marginBottom: 14 }}>
+                  <div className="toggle-label">
+                    The total amount was wrong <span className="hint-dot">ⓘ</span>
+                  </div>
+                  <div className="toggle-sub fix-desc">
+                    e.g. the real bill was $150, not {money(bill.amount)}. Fix the
+                    total and everyone’s share updates automatically.
+                  </div>
+                  <button className="btn-secondary" onClick={() => setOverriding(true)}>
+                    Correct the amount
+                  </button>
+                </div>
+
+                <div className="fix-option" tabIndex={0}>
+                  <div className="toggle-label">
+                    Someone’s days were wrong <span className="hint-dot">ⓘ</span>
+                  </div>
+                  <div className="toggle-sub fix-desc">
+                    Re-open the bill to fix who was home, then lock it again.
+                  </div>
+                  <button className="btn-secondary" onClick={() => reopenBill(bill.id)}>
+                    Re-open to fix days
+                  </button>
+                </div>
               </>
             ) : (
               <>
-                <span className="field-label">New total amount</span>
+                <p className="muted-note" style={{ marginBottom: 4 }}>
+                  Enter the correct total. Each person’s share is recalculated
+                  against it.
+                </p>
+                <span className="field-label">Correct total amount</span>
                 <input
                   type="text"
                   className="field"
@@ -119,19 +142,13 @@ export function AdminBillDetail() {
                   style={{ marginTop: 8 }}
                 />
                 <button className="btn-primary" onClick={applyOverride}>
-                  Apply override &amp; log it
+                  Save corrected amount
                 </button>
                 <button className="btn-ghost" onClick={() => setOverriding(false)}>
                   Cancel
                 </button>
               </>
             )}
-            <button
-              className="btn-ghost"
-              onClick={() => go({ name: 'admin-changelog' })}
-            >
-              View change log
-            </button>
           </div>
         )}
 

@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { useApp } from '../store';
-import { Avatar, BackLink, ExtrapolatedTag, Frame, TopBar } from '../ui';
+import { Avatar, ExtrapolatedTag, Frame, ScreenNav, TopBar } from '../ui';
 
 /** Soft-remove / restore / add housemates. Extrapolated admin utility. */
 export function AdminMembers() {
-  const { house, back, addMember, softRemoveMember, restoreMember } = useApp();
+  const { house, addMember, softRemoveMember, restoreMember } = useApp();
   const [name, setName] = useState('');
 
   const add = () => {
@@ -18,7 +18,7 @@ export function AdminMembers() {
     <Frame>
       <TopBar icon="LD" name={house.name} sub="Housemates" admin />
       <div className="screen">
-        <BackLink onClick={back} />
+        <ScreenNav />
         <div className="card admin">
           <ExtrapolatedTag />
           <div className="working-title">Housemates</div>
@@ -34,7 +34,7 @@ export function AdminMembers() {
                 <div>
                   <div className="name">{m.name}</div>
                   <div className="meta">
-                    {m.active ? `${m.presence.length} days logged` : 'Soft-removed'}
+                    {m.active ? `${m.awayDays.length} away days noted` : 'Soft-removed'}
                   </div>
                 </div>
               </div>

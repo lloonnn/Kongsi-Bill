@@ -479,24 +479,24 @@ input[type='text'].field::placeholder {
   color: #ddd7cb;
   cursor: default;
 }
-.cal-day.on {
+/* out-of-period day: a real day, but counts toward no bill */
+.cal-day.out {
+  background: transparent;
+  color: #cfc8bb;
+  cursor: default;
+}
+/* present (home) day inside a bill period — counted by default */
+.cal-day.present {
   background: var(--accent);
   color: #fff;
   box-shadow: 0 4px 10px rgba(232, 115, 46, 0.35);
 }
-.cal-day.in-period::after {
-  content: '';
-  position: absolute;
-  bottom: 4px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: #c9c2b6;
-}
-.cal-day.on.in-period::after {
-  background: rgba(255, 255, 255, 0.7);
+/* day the member marked themselves AWAY (not counted) */
+.cal-day.away {
+  background: var(--bg);
+  color: var(--muted);
+  text-decoration: line-through;
+  text-decoration-thickness: 2px;
 }
 
 .count-pill-row {
@@ -566,6 +566,12 @@ input[type='text'].field::placeholder {
 }
 .code-zone.admin-zone {
   border-left: 4px solid var(--accent);
+}
+.code-with-copy {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
 
 .warn-strip {
@@ -872,12 +878,7 @@ input[type='text'].field::placeholder {
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
-.status-pill.draft {
-  background: var(--bg);
-  color: var(--muted);
-  border: 1.5px solid var(--line);
-}
-.status-pill.grace {
+.status-pill.open {
   background: var(--warn-bg);
   color: var(--warn-ink);
 }
@@ -952,6 +953,121 @@ input[type='text'].field::placeholder {
   border-radius: 20px;
   font-size: 12px;
   font-weight: 700;
+}
+
+/* hover/tap-to-reveal hint (used on the "fix a mistake" options) */
+.hint-dot {
+  color: var(--muted);
+  font-size: 12px;
+  cursor: help;
+}
+.fix-option {
+  outline: none;
+}
+.fix-option .fix-desc {
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  margin: 0;
+  transition: max-height 0.2s ease, opacity 0.2s ease, margin 0.2s ease;
+}
+.fix-option:hover .fix-desc,
+.fix-option:focus-within .fix-desc {
+  max-height: 120px;
+  opacity: 1;
+  margin-bottom: 8px;
+}
+
+/* collapsible combined-bill card */
+.combined-header {
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  text-align: left;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+}
+.combined-chevron {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--muted);
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+.combined-chevron.open {
+  transform: rotate(90deg);
+}
+
+/* history overview matrix */
+.overview-wrap {
+  overflow-x: auto;
+  margin-top: 12px;
+}
+.overview-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.overview-table th,
+.overview-table td {
+  text-align: right;
+  padding: 10px 8px;
+  font-size: 12.5px;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--line);
+}
+.overview-table th {
+  color: var(--muted);
+  font-weight: 700;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.overview-table th.bill-head,
+.overview-table td.bill-cell {
+  text-align: left;
+  padding-left: 0;
+}
+.overview-table .bill-name {
+  font-weight: 700;
+  color: var(--ink);
+  font-size: 13px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.overview-table .bill-period {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 10.5px;
+  margin-top: 2px;
+}
+.overview-table .amt {
+  font-weight: 700;
+  color: var(--ink);
+}
+.overview-table .muted-cell {
+  color: #c9c2b6;
+}
+.overview-table .col-total {
+  color: var(--accent-dark);
+}
+.overview-table tfoot td {
+  font-weight: 800;
+  color: var(--ink);
+  border-top: 2px solid var(--ink);
+  border-bottom: none;
+  padding-top: 12px;
 }
 
 /* change-log entries */
@@ -1064,6 +1180,19 @@ input[type='text'].field::placeholder {
   padding: 4px 0;
   margin-bottom: 10px;
 }
+.back-link:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+/* Back + Home row */
+.screen-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.back-link.home {
+  color: var(--accent-dark);
+}
 
 /* hub launcher */
 .hub-section-label {
@@ -1076,15 +1205,15 @@ input[type='text'].field::placeholder {
 }
 .hub-btn {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  align-items: flex-start;
+  gap: 14px;
   width: 100%;
   text-align: left;
   background: var(--card);
   border: none;
-  border-radius: 16px;
+  border-radius: 18px;
   padding: 16px;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
   cursor: pointer;
   box-shadow: var(--shadow-card);
   font-family: 'Plus Jakarta Sans', sans-serif;
@@ -1092,28 +1221,77 @@ input[type='text'].field::placeholder {
 .hub-btn.admin {
   border-top: 4px solid var(--ink);
 }
+.hub-btn.primary {
+  background: var(--accent);
+  box-shadow: 0 6px 16px rgba(232, 115, 46, 0.28);
+}
+.hub-btn.primary .hb-title,
+.hub-btn.primary .hb-go {
+  color: #fff;
+}
+.hub-btn.primary .hub-num {
+  background: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+.hub-btn .hb-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
 .hub-btn .hb-title {
   font-weight: 700;
-  font-size: 15px;
+  font-size: 15.5px;
   color: var(--ink);
 }
 .hub-btn .hb-sub {
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--muted);
   font-weight: 500;
-  margin-top: 2px;
-  line-height: 1.4;
+  margin-top: 4px;
+  line-height: 1.45;
+  display: block;
 }
-.hub-emoji {
-  font-size: 22px;
-  width: 44px;
-  height: 44px;
-  border-radius: 14px;
+.hub-btn .hb-go {
+  align-self: center;
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 20px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+/* numbered step badge */
+.hub-num {
+  font-size: 17px;
+  font-weight: 800;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
   background: var(--accent-soft);
+  color: var(--accent-dark);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+}
+.hub-btn.admin .hub-num {
+  background: var(--ink);
+  color: #fff;
+}
+/* "who is this for" tag */
+.role-pill {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  padding: 2px 8px;
+  border-radius: 20px;
+  text-transform: uppercase;
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+}
+.role-pill.admin {
+  background: var(--ink);
+  color: #fff;
 }
 
 /* small helpers */

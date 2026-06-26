@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import type { Member, BillStatus } from './types';
+import { useApp } from './store';
 
 function initials(name: string): string {
   return name.trim().slice(0, 1).toUpperCase() || '?';
@@ -33,8 +34,7 @@ export function ExtrapolatedTag() {
 }
 
 const STATUS_TEXT: Record<BillStatus, string> = {
-  draft: 'Draft',
-  grace: 'Grace',
+  open: 'Open',
   locked: 'Locked',
 };
 
@@ -94,5 +94,27 @@ export function BackLink({ onClick, label = 'Back' }: { onClick: () => void; lab
     <button className="back-link" onClick={onClick}>
       ‹ {label}
     </button>
+  );
+}
+
+/**
+ * Top-of-screen navigation: "Back" goes to the previous page (or a custom
+ * step-back via `onBack`); "Home" always returns to the first page.
+ */
+export function ScreenNav({ onBack, backLabel = 'Back' }: { onBack?: () => void; backLabel?: string }) {
+  const { back, home, canGoBack } = useApp();
+  return (
+    <div className="screen-nav">
+      <button
+        className="back-link"
+        onClick={onBack ?? back}
+        disabled={!onBack && !canGoBack}
+      >
+        ‹ {backLabel}
+      </button>
+      <button className="back-link home" onClick={home}>
+        Home ⌂
+      </button>
+    </div>
   );
 }
