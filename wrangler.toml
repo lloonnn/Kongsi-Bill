@@ -6,3 +6,8 @@ compatibility_date = "2026-06-26"
 binding = "DB"
 database_name = "kongsi-bill"
 database_id = "e984f2f1-490c-45cc-ab90-ea0ee3e94f2e"
+
+[[ratelimits]]
+name = "RATE_LIMITER"
+namespace_id = "1001"
+simple = { limit = 65, period = 60 }
