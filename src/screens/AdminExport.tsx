@@ -14,7 +14,7 @@ export function AdminExport() {
 
   return (
     <Frame>
-      <TopBar icon="LD" name={house.name} sub="Export" admin />
+      <TopBar icon="LD" name={house.display_name} sub="Export" admin />
       <div className="screen">
         <ScreenNav />
         <div className="card admin">

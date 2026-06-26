@@ -9,7 +9,7 @@ export function ShareCodes({ title = 'Invite a housemate' }: { title?: string })
   const { house } = useApp();
   const [copied, setCopied] = useState<string | null>(null);
 
-  const link = `kongsibill.pages.dev/join?house=${house.roomId}&code=${house.memberCode}`;
+  const link = `kongsibill.pages.dev/join?house=${house.house_id}&code=${house.member_code}`;
 
   const flash = (id: string) => {
     setCopied(id);
@@ -33,7 +33,7 @@ export function ShareCodes({ title = 'Invite a housemate' }: { title?: string })
       <div className="code-zone member-zone">
         <div className="code-zone-label">Or the join code</div>
         <div className="code-with-copy">
-          <span className="code-zone-value">{house.memberCode}</span>
+          <span className="code-zone-value">{house.member_code}</span>
           <button className="copy-btn" onClick={() => flash('code')}>
             {copied === 'code' ? '✓ Copied' : 'Copy'}
           </button>

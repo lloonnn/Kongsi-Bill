@@ -3,16 +3,16 @@ import { useApp } from '../store';
 import { Avatar, ExtrapolatedTag, Frame, ScreenNav, TopBar } from '../ui';
 import { Calendar } from '../Calendar';
 import { ShareCodes } from '../ShareCodes';
-import { WorkingCard } from '../BillBreakdown';
-import { billIcon, billLabel, formatPeriod, money, NO_ROUNDING } from '../calc';
+import { billIcon, billLabel, formatPeriod, money } from '../calc';
+import type { DateRange, Member } from '../types';
 
-// Four landing states the prototype can simulate via the dev toggle.
-type LandingState = 'none' | 'open' | 'locked' | 'calm';
+// Three landing states the prototype can simulate via the dev toggle. There is
+// no "locked" state anymore — bills stay editable regardless of status.
+type LandingState = 'none' | 'active' | 'calm';
 
 const STATE_LABELS: Record<LandingState, string> = {
   none: 'No bills',
-  open: 'Open bill',
-  locked: 'Just locked',
+  active: 'Bills to mark',
   calm: 'Calm',
 };
 
@@ -22,16 +22,56 @@ const STATE_LABELS: Record<LandingState, string> = {
  * own judgment, tokens are the locked design system.
  */
 export function MemberLanding() {
-  const { house, currentMemberId, go } = useApp();
-  const [state, setState] = useState<LandingState>('open');
+  const { house, currentMemberId, go, connected } = useApp();
+  const [state, setState] = useState<LandingState>('active');
 
-  const member = house.members.find((m) => m.id === currentMemberId) ?? house.members[0];
-  const openBill = house.bills.find((b) => b.status === 'open');
-  const lockedBill = house.bills.find((b) => b.status === 'locked');
+  // Not joined to any house yet — there's no home page to show.
+  if (!connected) {
+    return (
+      <Frame>
+        <TopBar icon="🏡" name="My home page" sub="Not joined yet" />
+        <div className="screen">
+          <ScreenNav />
+          <div className="card">
+            <div className="eyebrow-pill">🔗 Join a house first</div>
+            <h1 className="title sm">You haven’t joined a house yet</h1>
+            <p className="sub">
+              Once you join with an invite link or join code, this becomes your
+              home page — your bills, your days, and the splits.
+            </p>
+            <button className="btn-primary" onClick={() => go({ name: 'member-join' })}>
+              Join a house
+            </button>
+            <button className="btn-secondary" onClick={() => go({ name: 'hub' })}>
+              Back to start
+            </button>
+          </div>
+        </div>
+      </Frame>
+    );
+  }
+
+  const member =
+    house.members.find((m) => m.member_id === currentMemberId) ?? house.members[0];
+
+  if (!member) {
+    return (
+      <Frame>
+        <TopBar icon="LD" name={house.display_name} sub="Home" />
+        <div className="screen">
+          <ScreenNav />
+          <div className="card">
+            <div className="eyebrow-pill">No housemates yet</div>
+            <p className="sub">Once you’re added to the house you’ll see your bills here.</p>
+          </div>
+        </div>
+      </Frame>
+    );
+  }
 
   return (
     <Frame>
-      <TopBar icon="LD" name="Lorong Damai 12" sub={member.name} />
+      <TopBar icon="LD" name={house.display_name} sub={member.name} />
       <div className="screen">
         <ScreenNav />
         {/* dev-only state simulator */}
@@ -56,10 +96,7 @@ export function MemberLanding() {
         </div>
 
         {state === 'none' && <NoBills />}
-        {state === 'open' && openBill && <OpenBill member={member} />}
-        {state === 'locked' && lockedBill && (
-          <JustLocked billId={lockedBill.id} />
-        )}
+        {state === 'active' && <ActiveBills member={member} />}
         {state === 'calm' && <Calm member={member} />}
 
         <button className="btn-secondary" onClick={() => go({ name: 'member-history' })}>
@@ -84,30 +121,37 @@ function NoBills() {
   );
 }
 
-function OpenBill({ member }: { member: { id: string } }) {
-  const { house, confirmDays } = useApp();
-  const openBills = house.bills.filter((b) => b.status === 'open');
-  const confirmed =
-    openBills.length > 0 &&
-    openBills.every((b) => b.confirmedMemberIds?.includes(member.id));
+function ActiveBills({ member }: { member: Member }) {
+  const { house, setPresence, confirmDays } = useApp();
+  const bills = house.bills;
+  const [draft, setDraft] = useState<DateRange[] | null>(null);
+  // Pending = the calendar has unsaved edits (so the confirmed badge is stale).
+  const [pending, setPending] = useState(false);
+  const confirmed = member.days_confirmed && !pending;
+
+  const save = async () => {
+    await setPresence(member.member_id, draft ?? member.presence);
+    await confirmDays(member.member_id);
+    setPending(false);
+  };
 
   return (
     <>
       <div className="prompt-strip">
         <span className="pico">🗓️</span>
         <div>
-          {openBills.length === 1 ? 'There’s an open bill.' : `There are ${openBills.length} open bills.`}{' '}
-          You’re counted home by default — just mark any days you were away. No
-          rush, they lock once everyone’s done.
+          {bills.length === 1 ? 'There’s a bill in progress.' : `There are ${bills.length} bills.`}{' '}
+          You’re counted home by default — just mark any days you were away. You
+          can update your days any time; the split always recomputes.
         </div>
       </div>
 
-      {openBills.map((bill) => (
-        <div className="card" key={bill.id}>
+      {bills.map((bill) => (
+        <div className="card" key={bill.bill_id}>
           <div className="row-between">
             <div>
               <div className="util-label" style={{ fontSize: 12 }}>
-                {billLabel(bill)} · open
+                {billLabel(bill)}
               </div>
               <div className="util-amount tnum" style={{ fontSize: 22 }}>
                 {money(bill.amount)}
@@ -119,7 +163,15 @@ function OpenBill({ member }: { member: { id: string } }) {
         </div>
       ))}
 
-      <Calendar memberId={member.id} bills={openBills} initial={{ year: 2026, month: 4 }} />
+      <Calendar
+        memberId={member.member_id}
+        bills={bills}
+        initial={{ year: 2026, month: 4 }}
+        onChange={(r) => {
+          setDraft(r);
+          setPending(true);
+        }}
+      />
       <p className="muted-note" style={{ textAlign: 'center', marginTop: 4 }}>
         Orange = counted home. Tap a day to mark yourself away — each bill counts
         only the dates in its own period.
@@ -129,48 +181,33 @@ function OpenBill({ member }: { member: { id: string } }) {
         <div className="recon-strip ok" style={{ marginTop: 14 }}>
           <span>✓</span>
           <div>
-            Your days are confirmed. Edit a day above any time before it locks —
-            you’ll just need to confirm again.
+            You’ve marked your days correct — the admin can see you’re done. Edit
+            any day above any time before a bill is confirmed (you’ll just mark
+            them correct again).
           </div>
         </div>
       ) : (
-        <button className="btn-primary" onClick={() => confirmDays(member.id)}>
-          These look right — confirm my days
+        <button className="btn-primary" onClick={save}>
+          {member.days_confirmed ? 'Save changes & mark correct' : 'These are right — mark my days correct'}
         </button>
       )}
     </>
   );
 }
 
-function JustLocked({ billId }: { billId: string }) {
-  const { house } = useApp();
-  const bill = house.bills.find((b) => b.id === billId)!;
-  return (
-    <>
-      <div className="prompt-strip" style={{ background: 'var(--ok-bg)', color: 'var(--ok-ink)' }}>
-        <span className="pico">✓</span>
-        <div>This bill is locked. Here's the final split — your share is fixed.</div>
-      </div>
-      <WorkingCard bill={bill} members={house.members} rounding={NO_ROUNDING} />
-    </>
-  );
-}
-
-function Calm({ member }: { member: { id: string; name: string } }) {
-  const { house } = useApp();
-  const m = house.members.find((x) => x.id === member.id)!;
+function Calm({ member }: { member: Member }) {
   return (
     <div className="card">
       <div className="eyebrow-pill">All caught up</div>
       <h1 className="title sm">Nothing needs you right now</h1>
       <p className="sub">
-        No open bills, nothing to confirm. When the next bill arrives you’ll be
-        counted home by default — you’ll only need to note any days you were away.
+        Nothing to mark. When the next bill arrives you’ll be counted home by
+        default — you’ll only need to note any days you were away.
       </p>
       <div className="row-between" style={{ marginTop: 16 }}>
         <div className="person-left">
-          <Avatar member={m} size="md" />
-          <div className="person-name">{m.name}</div>
+          <Avatar member={member} size="md" />
+          <div className="person-name">{member.name}</div>
         </div>
       </div>
     </div>

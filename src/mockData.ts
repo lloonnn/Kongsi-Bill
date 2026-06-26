@@ -1,93 +1,93 @@
-import type { House } from './types';
+import type { HouseState } from './types';
 
 // ---------------------------------------------------------------------------
-// Date helpers (used only to author readable mock presence data)
-// ---------------------------------------------------------------------------
-
-/** Inclusive list of ISO date keys from `start` to `end` (YYYY-MM-DD). */
-function range(start: string, end: string): string[] {
-  const out: string[] = [];
-  const d = new Date(start + 'T00:00:00');
-  const last = new Date(end + 'T00:00:00');
-  while (d <= last) {
-    out.push(d.toISOString().slice(0, 10));
-    d.setDate(d.getDate() + 1);
-  }
-  return out;
-}
-
-// ---------------------------------------------------------------------------
-// The single running example house.
+// A demo house used to seed the context for offline click-through. Once a real
+// house is created or joined (store.createHouse / store.joinHouse), this is
+// replaced by live state from the Worker. It is shaped exactly like the API's
+// GET /house/:id response.
 //
-// Everyone is home by default; members only record the days they were AWAY.
-// The January electricity bill (1–31 Jan, 31 days) still reproduces the
-// calculation-screen reference EXACTLY, via away-days:
-//   Alice away 0  -> home 31      Bob away 16 -> home 15      Carol away 10 -> home 21
+// Presence is now PRESENT ranges (days home), matching the API — the opposite
+// of the prototype's away-day list. The January electricity bill (1–31 Jan,
+// 31 days) still reproduces the calculation-screen reference EXACTLY:
+//   Alice present all 31      Bob present 15 (1–10, 20–24)      Carol present 21 (1–21)
 //   total 67 home-day-shares
-//   31/67 x $100 = $46.27   15/67 x $100 = $22.39   21/67 x $100 = $31.34
-//   $46.27 + $22.39 + $31.34 = $100.00  (reconciles)
+//   31/67 × $100 = $46.27   15/67 × $100 = $22.39   21/67 × $100 = $31.34   → $100.00
 // ---------------------------------------------------------------------------
 
-// Alice: home all January; a short trip 10–15 Jun.
-const aliceAway = [...range('2026-06-10', '2026-06-15')];
-
-// Bob: away 16 days in January (home 15); away most of the May–Jun period.
-const bobAway = [
-  ...range('2026-01-11', '2026-01-19'), // 9
-  ...range('2026-01-25', '2026-01-31'), // +7 = 16 away in January
-  ...range('2026-05-16', '2026-06-11'), // away most of the open electricity period
-];
-
-// Carol: away last 10 days of January (home 21); a couple of trips in May–Jun.
-const carolAway = [
-  ...range('2026-01-22', '2026-01-31'), // 10 away in January
-  ...range('2026-05-16', '2026-05-19'), // 4
-  ...range('2026-06-07', '2026-06-15'), // +9
-];
-
-export const initialHouse: House = {
-  id: 'house-ld12',
-  name: 'Lorong Damai 12',
-  roomId: 'LD12-7F2',
-  memberCode: 'XYZ-4821',
-  adminCode: 'QRP-9034',
-  adminMemberId: 'm-alice', // Alice set up the house and is also a housemate
+export const initialHouse: HouseState = {
+  house_id: 'LD12-7F2',
+  display_name: 'Lorong Damai 12',
+  member_code: 'XYZ-4821',
+  created_at: '2026-01-01',
   members: [
-    { id: 'm-alice', name: 'Alice', tone: 'accent', active: true, awayDays: aliceAway },
-    { id: 'm-bob', name: 'Bob', tone: 'alt2', active: true, awayDays: bobAway },
-    { id: 'm-carol', name: 'Carol', tone: 'alt3', active: true, awayDays: carolAway },
+    {
+      member_id: 'm-alice',
+      name: 'Alice',
+      active: true,
+      days_confirmed: true,
+      // Home all period except a short trip 10–15 Jun.
+      presence: [
+        { start: '2026-01-01', end: '2026-06-09' },
+        { start: '2026-06-16', end: '2026-06-30' },
+      ],
+    },
+    {
+      member_id: 'm-bob',
+      name: 'Bob',
+      active: true,
+      days_confirmed: false, // hasn't reviewed his days yet
+      // Away 11–19 & 25–31 Jan (home 15), away most of 16 May–11 Jun.
+      presence: [
+        { start: '2026-01-01', end: '2026-01-10' },
+        { start: '2026-01-20', end: '2026-01-24' },
+        { start: '2026-02-01', end: '2026-05-15' },
+        { start: '2026-06-12', end: '2026-06-30' },
+      ],
+    },
+    {
+      member_id: 'm-carol',
+      name: 'Carol',
+      active: true,
+      days_confirmed: true,
+      // Away last 10 days of Jan (home 21); a couple of trips in May–Jun.
+      presence: [
+        { start: '2026-01-01', end: '2026-01-21' },
+        { start: '2026-02-01', end: '2026-05-15' },
+        { start: '2026-05-20', end: '2026-06-06' },
+        { start: '2026-06-16', end: '2026-06-30' },
+      ],
+    },
   ],
   bills: [
     {
-      id: 'bill-jan-elec',
-      utility: 'electricity',
+      bill_id: 'bill-jan-elec',
+      utility_label: 'Electricity',
       amount: 100,
-      periodStart: '2026-01-01',
-      periodEnd: '2026-01-31',
-      status: 'locked',
-      lockedOn: '8 Feb 2026',
+      period_start: '2026-01-01',
+      period_end: '2026-01-31',
+      status: 'paid', // settled & closed — already paid the landlord
     },
     {
-      id: 'bill-open-elec',
-      utility: 'electricity',
+      bill_id: 'bill-open-elec',
+      utility_label: 'Electricity',
       amount: 142.6,
-      periodStart: '2026-05-16',
-      periodEnd: '2026-06-15',
-      status: 'open',
-      // Alice & Carol have confirmed their days; Bob hasn't looked yet.
-      confirmedMemberIds: ['m-alice', 'm-carol'],
+      period_start: '2026-05-16',
+      period_end: '2026-06-15',
+      status: 'draft',
     },
     {
-      id: 'bill-open-water',
-      utility: 'water',
+      bill_id: 'bill-open-water',
+      utility_label: 'Water',
       amount: 58.4,
-      periodStart: '2026-06-01',
-      periodEnd: '2026-06-30',
-      status: 'open',
-      confirmedMemberIds: ['m-alice', 'm-carol'],
+      period_start: '2026-06-01',
+      period_end: '2026-06-30',
+      status: 'draft',
     },
   ],
 };
+
+/** The admin code for the demo house — held separately, as the API does. */
+export const initialAdminCode = 'QRP-9034';
 
 /** Today, fixed for the prototype so timestamps are deterministic. */
 export const TODAY = '2026-06-24';

@@ -1,7 +1,7 @@
-import { useState } from 'react';
-import type { Bill } from './types';
+import { useEffect, useRef, useState } from 'react';
+import type { Bill, DateRange } from './types';
 import { useApp } from './store';
-import { isInPeriod } from './calc';
+import { isInPeriod, presentDaysFromRanges, rangesFromPresentDays } from './calc';
 
 function fmtKey(y: number, m: number, d: number): string {
   return `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
@@ -17,34 +17,95 @@ function monthLabel(y: number, m: number): string {
 const DOW = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
 /**
+ * All YYYY-MM-DD keys inside a bill period (inclusive). Parsed and formatted in
+ * UTC so the keys match the calendar cells exactly regardless of the viewer's
+ * timezone (local + toISOString would shift the keys a day in UTC+ zones).
+ */
+function periodKeys(bill: Bill): string[] {
+  const out: string[] = [];
+  const d = new Date(bill.period_start + 'T00:00:00Z');
+  const last = new Date(bill.period_end + 'T00:00:00Z');
+  while (d <= last) {
+    out.push(d.toISOString().slice(0, 10));
+    d.setUTCDate(d.getUTCDate() + 1);
+  }
+  return out;
+}
+
+/**
  * Tappable presence calendar with month navigation.
  *
- * - Month nav (‹ ›) lets a period cross month boundaries.
- * - Days inside ANY of `bills`' periods show a dot (the union), but every day
- *   stays tappable — recording outside a bill is allowed, it counts toward
- *   nothing. Each bill's own calculation only uses days within its own period.
- * - Day count updates live as days are toggled.
+ * The data model is PRESENT days (matching the API): a member's stored presence
+ * ranges expand into the set of days they were home. Following the blueprint's
+ * default-to-present rule, a member with NO stored presence starts with every
+ * in-period day selected as present — so they only tap to *remove* the days
+ * they were away. Edits stay local; the parent persists them via `onChange`
+ * (clean { start, end } ranges) and its own Save button (store.setPresence).
  */
 export function Calendar({
   memberId,
   bills = [],
   initial,
+  onChange,
 }: {
   memberId: string;
   bills?: Bill[];
   initial: { year: number; month: number };
+  onChange?: (ranges: DateRange[]) => void;
 }) {
-  const { house, toggleAway } = useApp();
+  const { house } = useApp();
   const [view, setView] = useState(initial);
 
-  const member = house.members.find((m) => m.id === memberId);
+  const member = house.members.find((m) => m.member_id === memberId);
+
+  const seed = (): Set<string> => {
+    if (!member) return new Set();
+    if (member.presence.length === 0) {
+      // Default to present: pre-select every day inside any of the given bills.
+      const s = new Set<string>();
+      for (const b of bills) for (const k of periodKeys(b)) s.add(k);
+      return s;
+    }
+    return presentDaysFromRanges(member.presence);
+  };
+
+  const [present, setPresent] = useState<Set<string>>(seed);
+
+  // Reseed when the member being edited changes (admin editing several people).
+  useEffect(() => {
+    setPresent(seed());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [memberId]);
+
+  // Report the current ranges to the parent whenever the selection changes,
+  // including the initial (default-present) seed so a Save-without-tapping
+  // still persists a clean record.
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  useEffect(() => {
+    onChangeRef.current?.(rangesFromPresentDays(present));
+  }, [present]);
+
   if (!member) return null;
-  const awaySet = new Set(member.awayDays);
 
   const firstDow = new Date(view.year, view.month, 1).getDay();
   const daysInMonth = new Date(view.year, view.month + 1, 0).getDate();
 
   const dayInPeriod = (key: string) => bills.some((b) => isInPeriod(key, b));
+  // A day inside a CONFIRMED or PAID bill's period is locked (final) — its split
+  // is settled, so it can't be edited without the admin reopening that bill.
+  const dayLocked = (key: string) =>
+    bills.some((b) => b.status !== 'draft' && isInPeriod(key, b));
+  const dayEditable = (key: string) => dayInPeriod(key) && !dayLocked(key);
+  const hasLocked = bills.some((b) => b.status !== 'draft');
+
+  const toggle = (key: string) =>
+    setPresent((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
 
   const nav = (delta: number) =>
     setView((v) => {
@@ -61,16 +122,16 @@ export function Calendar({
       return { year: y, month: m };
     });
 
-  // Home days this member counts in the visible month (in-period & not away).
+  // Home (present) days this member counts in the visible month.
   let homeThisMonth = 0;
   for (let d = 1; d <= daysInMonth; d++) {
     const key = fmtKey(view.year, view.month, d);
-    if (dayInPeriod(key) && !awaySet.has(key)) homeThisMonth++;
+    if (dayInPeriod(key) && present.has(key)) homeThisMonth++;
   }
 
   const dotLabel = bills.length
     ? 'tap the days you were away'
-    : 'no open bill — nothing to mark yet';
+    : 'no bill in range, please add a bill';
 
   return (
     <div className="card">
@@ -97,14 +158,23 @@ export function Calendar({
           const day = i + 1;
           const key = fmtKey(view.year, view.month, day);
           const inPeriod = dayInPeriod(key);
-          const away = awaySet.has(key);
-          const cls = !inPeriod ? 'out' : away ? 'away' : 'present';
+          const locked = dayLocked(key);
+          const editable = dayEditable(key);
+          const isPresent = present.has(key);
+          const cls = !inPeriod
+            ? 'out'
+            : locked
+            ? `locked ${isPresent ? '' : 'away'}`.trim()
+            : isPresent
+            ? 'present'
+            : 'away';
           return (
             <button
               key={key}
               className={`cal-day ${cls}`}
-              disabled={!inPeriod}
-              onClick={() => inPeriod && toggleAway(memberId, key)}
+              disabled={!editable}
+              title={locked ? 'This bill is confirmed — days are final' : undefined}
+              onClick={() => editable && toggle(key)}
             >
               {day}
             </button>
@@ -119,6 +189,13 @@ export function Calendar({
           <span className="accent-num">day{homeThisMonth === 1 ? '' : 's'}</span>
         </span>
       </div>
+
+      {hasLocked && (
+        <p className="muted-note" style={{ marginTop: 10 }}>
+          🔒 Green-locked days belong to a <b>finished</b> bill — they’re final.
+          Ask the admin to reopen that bill if a date is wrong.
+        </p>
+      )}
     </div>
   );
 }

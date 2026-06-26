@@ -47,7 +47,7 @@ export function WorkingCard({
     <div className="card admin">
       <div className="working-title">Per-person working</div>
       {c.shares.map((s) => (
-        <div className="person-row" key={s.member.id}>
+        <div className="person-row" key={s.member.member_id}>
           <div className="person-left">
             <Avatar member={s.member} size="md" />
             <div>

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useApp } from '../store';
 import { Avatar, Frame, ProgressRow, ScreenNav, TopBar } from '../ui';
 import { Calendar } from '../Calendar';
+import type { DateRange } from '../types';
 
 type Step = 'code' | 'welcome' | 'recognize' | 'name' | 'calendar';
 
@@ -19,18 +20,19 @@ function normalizeCode(s: string): string {
  *   code → welcome → recognize-or-name → calendar
  */
 export function MemberJoin() {
-  const { house, go, setCurrentMember, addMember, confirmDays } = useApp();
+  const { house, go, setCurrentMember, addMember, setPresence, confirmDays } = useApp();
   const [step, setStep] = useState<Step>('code');
   const [codeInput, setCodeInput] = useState('');
   const [codeError, setCodeError] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState('Divya');
+  const [presenceDraft, setPresenceDraft] = useState<DateRange[] | null>(null);
 
   const activeMembers = house.members.filter((m) => m.active);
-  const member = activeId ? house.members.find((m) => m.id === activeId) : null;
+  const member = activeId ? house.members.find((m) => m.member_id === activeId) : null;
 
   const submitCode = () => {
-    if (normalizeCode(codeInput) === normalizeCode(house.memberCode)) {
+    if (normalizeCode(codeInput) === normalizeCode(house.member_code)) {
       setCodeError(false);
       setStep('welcome');
     } else {
@@ -44,11 +46,19 @@ export function MemberJoin() {
     setStep('calendar');
   };
 
-  const joinAsNew = () => {
-    const m = addMember(draftName.trim() || 'New member');
-    setActiveId(m.id);
-    setCurrentMember(m.id);
+  const joinAsNew = async () => {
+    const m = await addMember(draftName.trim() || 'New member');
+    setActiveId(m.member_id);
+    setCurrentMember(m.member_id);
     setStep('calendar');
+  };
+
+  const saveDays = async () => {
+    if (member) {
+      await setPresence(member.member_id, presenceDraft ?? member.presence);
+      await confirmDays(member.member_id);
+    }
+    go({ name: 'member-landing' });
   };
 
   // back control: first step exits to Home, otherwise steps backward
@@ -119,7 +129,7 @@ export function MemberJoin() {
               </h1>
               <p className="sub">
                 Bills here are split by how many days each person was home.
-                You’re counted home by default — just mark the days you were
+                You’re counted home by default, just mark the days you were
                 away, and you only pay for the days you were here.
               </p>
               <button className="btn-primary" onClick={() => setStep('recognize')}>
@@ -143,7 +153,7 @@ export function MemberJoin() {
               </p>
               <div style={{ marginTop: 16 }}>
                 {activeMembers.map((m) => (
-                  <div key={m.id} className="member-row" onClick={() => pickExisting(m.id)}>
+                  <div key={m.member_id} className="member-row" onClick={() => pickExisting(m.member_id)}>
                     <Avatar member={m} />
                     <div className="member-name">{m.name}</div>
                   </div>
@@ -186,12 +196,13 @@ export function MemberJoin() {
               Hi {member.name}, mark any days you were away
             </div>
             <Calendar
-              memberId={member.id}
-              bills={house.bills.filter((b) => b.status === 'open')}
+              memberId={member.member_id}
+              bills={house.bills}
               initial={{ year: 2026, month: 5 }}
+              onChange={setPresenceDraft}
             />
-            <button className="btn-primary" onClick={() => go({ name: 'member-landing' })}>
-              Save my days
+            <button className="btn-primary" onClick={saveDays}>
+              Save &amp; mark my days correct
             </button>
           </>
         )}

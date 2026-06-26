@@ -498,6 +498,17 @@ input[type='text'].field::placeholder {
   text-decoration: line-through;
   text-decoration-thickness: 2px;
 }
+/* day inside a CONFIRMED (locked) bill period — final, not editable */
+.cal-day.locked {
+  background: var(--ok-bg);
+  color: var(--ok-ink);
+  cursor: not-allowed;
+  opacity: 0.85;
+}
+.cal-day.locked.away {
+  background: var(--bg);
+  color: var(--muted);
+}
 
 .count-pill-row {
   display: flex;
@@ -878,13 +889,17 @@ input[type='text'].field::placeholder {
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
-.status-pill.open {
+.status-pill.draft {
   background: var(--warn-bg);
   color: var(--warn-ink);
 }
-.status-pill.locked {
+.status-pill.confirmed {
   background: var(--ok-bg);
   color: var(--ok-ink);
+}
+.status-pill.paid {
+  background: var(--ink);
+  color: #fff;
 }
 
 .list-row {
@@ -1323,6 +1338,24 @@ input[type='text'].field::placeholder {
   display: flex;
   gap: 8px;
   margin-top: 10px;
+}
+/* Option chip — used by the .seg-choice segmented control AND the standalone
+   utility-type grid in the bill form (which is not inside a .seg-choice). */
+.opt {
+  border: 2px solid var(--line);
+  background: var(--bg);
+  border-radius: 12px;
+  padding: 12px 8px;
+  text-align: center;
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--ink);
+}
+.opt.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-dark);
 }
 .seg-choice .opt {
   flex: 1;

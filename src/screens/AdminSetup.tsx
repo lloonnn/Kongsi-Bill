@@ -16,24 +16,47 @@ function toneClass(i: number) {
  * running mock house. Finishing drops into the mock house dashboard.
  */
 export function AdminSetup() {
-  const { go } = useApp();
+  const { go, createHouse, addMember, busy, error } = useApp();
   const [step, setStep] = useState(1);
   const [houseName, setHouseName] = useState('Lorong Damai 12');
   const [codesSaved, setCodesSaved] = useState(false);
-  const [members, setMembers] = useState(['Alice', 'Bob', 'Carol']);
+  // Start empty: the creator is NOT auto-added. They’re prompted to add
+  // themselves (among others) — a house may even validly have no PIC member.
+  const [members, setMembers] = useState<string[]>([]);
   const [newMember, setNewMember] = useState('');
   const [copied, setCopied] = useState<string | null>(null);
+  // Real codes returned by POST /house, captured at step 1.
+  const [created, setCreated] = useState<{
+    house_id: string;
+    member_code: string;
+    admin_code: string;
+  } | null>(null);
 
   const flash = (id: string) => {
     setCopied(id);
     setTimeout(() => setCopied((c) => (c === id ? null : c)), 1200);
   };
 
-  const addMember = () => {
+  const addToList = () => {
     const v = newMember.trim();
     if (!v) return;
     setMembers((m) => [...m, v]);
     setNewMember('');
+  };
+
+  const createTheHouse = async () => {
+    const res = await createHouse(houseName.trim());
+    setCreated({
+      house_id: res.house_id,
+      member_code: res.member_code,
+      admin_code: res.admin_code,
+    });
+    setStep(2);
+  };
+
+  const persistMembersAndShare = async () => {
+    for (const name of members) await addMember(name);
+    setStep(5);
   };
 
   const subs: Record<number, string> = {
@@ -76,11 +99,16 @@ export function AdminSetup() {
             />
             <button
               className="btn-primary"
-              onClick={() => setStep(2)}
-              disabled={!houseName.trim()}
+              onClick={createTheHouse}
+              disabled={!houseName.trim() || busy}
             >
-              Create house
+              {busy ? 'Creating…' : 'Create house'}
             </button>
+            {error && (
+              <p className="muted-note" style={{ color: 'var(--warn-ink)', marginTop: 8 }}>
+                {error}
+              </p>
+            )}
           </div>
         )}
 
@@ -95,7 +123,7 @@ export function AdminSetup() {
             <div className="code-zone member-zone">
               <div className="code-zone-label">1 · Share this — the join code</div>
               <div className="code-with-copy">
-                <span className="code-zone-value">XYZ-4821</span>
+                <span className="code-zone-value">{created?.member_code ?? '…'}</span>
                 <button className="copy-btn" onClick={() => flash('code')}>
                   {copied === 'code' ? '✓ Copied' : 'Copy'}
                 </button>
@@ -108,7 +136,7 @@ export function AdminSetup() {
 
             <div className="code-zone admin-zone">
               <div className="code-zone-label">2 · Keep private — your admin key</div>
-              <div className="code-zone-value">QRP-9034</div>
+              <div className="code-zone-value">{created?.admin_code ?? '…'}</div>
               <div className="code-zone-hint">
                 Proves you're the one who runs this house. You'll need it to
                 confirm and lock bills, and to add or remove housemates.
@@ -173,11 +201,24 @@ export function AdminSetup() {
             <div className="eyebrow-pill admin">👥 Add housemates</div>
             <h1 className="title sm">Who lives at {houseName}?</h1>
             <p className="sub">
-              Add everyone who lives here — <b>including yourself</b>, since you
-              split the bills too. You can add or remove people anytime later.
+              Add everyone who lives here. You can add or remove people anytime
+              later.
             </p>
 
+            <div className="prompt-strip" style={{ marginTop: 12 }}>
+              <span className="pico">👋</span>
+              <div>
+                Add <b>yourself</b> first if you are also contribute to the bills
+                too. (You hold the admin key, but you’re not added automatically.)
+              </div>
+            </div>
+
             <div style={{ marginTop: 16 }}>
+              {members.length === 0 && (
+                <p className="muted-note" style={{ marginBottom: 8 }}>
+                  No housemates added yet — start with your own name.
+                </p>
+              )}
               {members.map((m, i) => (
                 <div className="member-pill" key={m + i}>
                   <div className="left">
@@ -202,15 +243,15 @@ export function AdminSetup() {
                 placeholder="Add a housemate's name"
                 value={newMember}
                 onChange={(e) => setNewMember(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && addMember()}
+                onKeyDown={(e) => e.key === 'Enter' && addToList()}
               />
-              <button onClick={addMember} aria-label="Add housemate">
+              <button onClick={addToList} aria-label="Add housemate">
                 +
               </button>
             </div>
 
-            <button className="btn-primary" onClick={() => setStep(5)}>
-              Continue
+            <button className="btn-primary" onClick={persistMembersAndShare} disabled={busy}>
+              {busy ? 'Saving…' : members.length === 0 ? 'Skip for now' : 'Continue'}
             </button>
           </div>
         )}
@@ -230,7 +271,8 @@ export function AdminSetup() {
                 style={{ marginTop: 8, background: '#fff' }}
               >
                 <span className="link-text">
-                  kongsibill.pages.dev/join?house=LD12-7F2&amp;code=XYZ-4821
+                  kongsibill.pages.dev/join?house={created?.house_id ?? '…'}&amp;code=
+                  {created?.member_code ?? '…'}
                 </span>
                 <button className="copy-btn" onClick={() => flash('link')}>
                   {copied === 'link' ? '✓' : 'Copy'}
@@ -244,7 +286,7 @@ export function AdminSetup() {
             <div className="code-zone member-zone">
               <div className="code-zone-label">No link? — the join code</div>
               <div className="code-with-copy">
-                <span className="code-zone-value">XYZ-4821</span>
+                <span className="code-zone-value">{created?.member_code ?? '…'}</span>
                 <button className="copy-btn" onClick={() => flash('code')}>
                   {copied === 'code' ? '✓ Copied' : 'Copy'}
                 </button>

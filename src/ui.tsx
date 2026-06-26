@@ -1,12 +1,25 @@
 import type { ReactNode } from 'react';
-import type { Member, BillStatus } from './types';
+import type { AvatarTone, Member, BillStatus } from './types';
 import { useApp } from './store';
 
 function initials(name: string): string {
   return name.trim().slice(0, 1).toUpperCase() || '?';
 }
 
-function toneClass(tone: Member['tone']): string {
+const TONES: AvatarTone[] = ['accent', 'alt2', 'alt3'];
+
+/**
+ * Avatar tone is a frontend-only presentational detail derived from the member
+ * id (never stored or sent). A stable string hash keeps each member's colour
+ * consistent across renders.
+ */
+export function toneFor(seed: string): AvatarTone {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) | 0;
+  return TONES[Math.abs(h) % TONES.length];
+}
+
+function toneClass(tone: AvatarTone): string {
   return tone === 'alt2' ? 'alt2' : tone === 'alt3' ? 'alt3' : '';
 }
 
@@ -14,12 +27,12 @@ export function Avatar({
   member,
   size = 'md',
 }: {
-  member: Pick<Member, 'name' | 'tone'>;
+  member: Pick<Member, 'name' | 'member_id'>;
   size?: 'sm' | 'md' | 'lg';
 }) {
   const sizeClass = size === 'lg' ? '' : size; // '' = the default 38px
   return (
-    <div className={`avatar ${sizeClass} ${toneClass(member.tone)}`.trim()}>
+    <div className={`avatar ${sizeClass} ${toneClass(toneFor(member.member_id))}`.trim()}>
       {initials(member.name)}
     </div>
   );
@@ -34,8 +47,9 @@ export function ExtrapolatedTag() {
 }
 
 const STATUS_TEXT: Record<BillStatus, string> = {
-  open: 'Open',
-  locked: 'Locked',
+  draft: 'Open',
+  confirmed: 'Confirmed',
+  paid: 'Done',
 };
 
 export function StatusPill({ status }: { status: BillStatus }) {

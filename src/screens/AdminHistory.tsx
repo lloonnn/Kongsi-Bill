@@ -14,7 +14,7 @@ export function AdminHistory() {
 
   return (
     <Frame>
-      <TopBar icon="LD" name={house.name} sub="Combined bills" admin />
+      <TopBar icon="LD" name={house.display_name} sub="Combined bills" admin />
       <div className="screen gap">
         <ScreenNav />
 

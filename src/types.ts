@@ -1,52 +1,62 @@
-// Domain types for the Kongsi Bill prototype.
-// All data is in-memory mock data — no backend, no persistence.
+// Domain types for Kongsi Bill.
+//
+// These mirror the Worker JSON contract (worker/index.ts) and the applied D1
+// schema (migrations/0001 + 0002), which are the source of truth. Field names
+// are the snake_case *database* names so the frontend and API speak the same
+// language with no translation layer:
+//   house_id, member_code, display_name, member_id, utility_label,
+//   period_start/period_end, bill_id, presence ranges as { start, end }.
+//
+// Internal-only presentational data (e.g. avatar tone) is NEVER part of these
+// shapes — it is derived in the UI and never sent to the API.
 
+/** Avatar colour tone — frontend-only, derived from the member id. */
 export type AvatarTone = 'accent' | 'alt2' | 'alt3';
 
-export interface Member {
-  id: string;
-  name: string;
-  tone: AvatarTone;
-  /** Soft-removed members stay in records but no longer record presence. */
-  active: boolean;
-  /**
-   * ISO date keys (YYYY-MM-DD) the member marked as AWAY.
-   * Everyone is counted home by default for any bill period — a member only
-   * records the days they were NOT around. Home days for a bill = period
-   * length minus the away days that fall inside the period.
-   */
-  awayDays: string[];
+/** A presence range: inclusive YYYY-MM-DD dates the member was PRESENT. */
+export interface DateRange {
+  start: string;
+  end: string;
 }
 
-export type Utility = 'electricity' | 'water' | 'gas' | 'internet' | 'other';
+export interface Member {
+  member_id: string;
+  name: string;
+  /** Soft-removed members (active=false) stay attached to past bills. */
+  active: boolean;
+  /**
+   * "My days are correct" readiness flag. The member sets it after reviewing
+   * their days; it auto-clears whenever they edit their presence. Lets the
+   * admin see who is done before locking the cycle.
+   */
+  days_confirmed: boolean;
+  /**
+   * Ranges the member was PRESENT (home), inclusive. This replaces the
+   * prototype's `awayDays` (days absent) — opposite semantics and shape, to
+   * match the API. A member with NO presence ranges is treated as "present the
+   * whole period" by the calculation (blueprint §6.6) until they record days.
+   */
+  presence: DateRange[];
+}
 
-// A bill is "open" (housemates can still mark days) until the admin locks it
-// when everyone has marked their dates. No time limit — the admin decides.
-export type BillStatus = 'open' | 'locked';
+/**
+ * Bill lifecycle label: draft → confirmed → paid.
+ *   draft     — editable; housemates can still mark their days.
+ *   confirmed — locked & announced; the split is final, days can't change.
+ *   paid      — settled/closed; the admin has paid the landlord.
+ * 'confirmed' and 'paid' both lock editing (the admin can reopen to 'draft').
+ */
+export type BillStatus = 'draft' | 'confirmed' | 'paid';
 
 export interface Bill {
-  id: string;
-  utility: Utility;
-  /** For utility === 'other': the custom name the admin typed. */
-  customLabel?: string;
+  bill_id: string;
+  /** Single free-text label, e.g. "Electricity", "Water", or anything typed. */
+  utility_label: string;
   amount: number;
-  /** Inclusive ISO date keys bounding the bill period. */
-  periodStart: string;
-  periodEnd: string;
+  /** Inclusive YYYY-MM-DD dates bounding the bill period. */
+  period_start: string;
+  period_end: string;
   status: BillStatus;
-  /** Set once locked, so history can show when it was finalized. */
-  lockedOn?: string;
-  /**
-   * Members confirmed away for the WHOLE period — excluded from this bill
-   * (they pay nothing and don't count toward the split denominator).
-   */
-  awayMemberIds?: string[];
-  /**
-   * Members who have confirmed their days are correct for this (open) bill.
-   * Lets the admin see who's reviewed vs. who's still counted home by default.
-   * Cleared for a member when they change their days, and on re-open.
-   */
-  confirmedMemberIds?: string[];
 }
 
 export interface RoundingConfig {
@@ -56,14 +66,15 @@ export interface RoundingConfig {
   increment: number;
 }
 
-export interface House {
-  id: string;
-  name: string;
-  roomId: string;
-  memberCode: string;
-  adminCode: string;
-  /** Which member record is the admin/bill-payer — they mark days too. */
-  adminMemberId: string;
+/**
+ * Full house state as returned by GET /house/:id. The admin_code is held
+ * separately in the store (the API only ever returns it once, at creation).
+ */
+export interface HouseState {
+  house_id: string;
+  display_name: string;
+  member_code: string;
+  created_at: string;
   members: Member[];
   bills: Bill[];
 }

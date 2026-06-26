@@ -9,7 +9,7 @@ import { AdminDashboard } from './screens/AdminDashboard';
 import { AdminMyDays } from './screens/AdminMyDays';
 import { AdminEditDays } from './screens/AdminEditDays';
 import { AdminAddBill } from './screens/AdminAddBill';
-import { AdminCalculate } from './screens/AdminCalculate';
+import { AdminCombined } from './screens/AdminCombined';
 import { AdminHistory } from './screens/AdminHistory';
 import { AdminBillDetail } from './screens/AdminBillDetail';
 import { AdminExport } from './screens/AdminExport';
@@ -26,7 +26,7 @@ const SCREENS: Record<RouteName, () => ReactElement> = {
   'admin-my-days': AdminMyDays,
   'admin-edit-days': AdminEditDays,
   'admin-add-bill': AdminAddBill,
-  'admin-calculate': AdminCalculate,
+  'admin-combined': AdminCombined,
   'admin-history': AdminHistory,
   'admin-bill-detail': AdminBillDetail,
   'admin-export': AdminExport,

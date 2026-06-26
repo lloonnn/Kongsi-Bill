@@ -30,7 +30,7 @@ export function BillOverview({
   const members = house.members.filter((m) => m.active);
   const bills = (billsProp ?? house.bills)
     .slice()
-    .sort((a, b) => (a.periodStart < b.periodStart ? 1 : -1));
+    .sort((a, b) => (a.period_start < b.period_start ? 1 : -1));
 
   const rows = bills.map((bill) => ({
     bill,
@@ -38,7 +38,7 @@ export function BillOverview({
   }));
 
   const shareFor = (calc: Calculation, memberId: string) =>
-    calc.shares.find((s) => s.member.id === memberId);
+    calc.shares.find((s) => s.member.member_id === memberId);
 
   const memberTotal = (memberId: string) =>
     rows.reduce((sum, { calc }) => {
@@ -55,17 +55,17 @@ export function BillOverview({
           <tr>
             <th className="bill-head">Bill</th>
             {members.map((m) => (
-              <th key={m.id}>{m.name}</th>
+              <th key={m.member_id}>{m.name}</th>
             ))}
             <th className="col-total">Total</th>
           </tr>
         </thead>
         <tbody>
           {rows.map(({ bill, calc }) => (
-            <tr key={bill.id}>
+            <tr key={bill.bill_id}>
               <td className="bill-cell">
                 {onOpenBill ? (
-                  <button className="bill-name" onClick={() => onOpenBill(bill.id)}>
+                  <button className="bill-name" onClick={() => onOpenBill(bill.bill_id)}>
                     {billIcon(bill)} {billLabel(bill)}
                   </button>
                 ) : (
@@ -79,10 +79,10 @@ export function BillOverview({
                 </div>
               </td>
               {members.map((m) => {
-                const s = shareFor(calc, m.id);
+                const s = shareFor(calc, m.member_id);
                 const has = s && s.days > 0;
                 return (
-                  <td key={m.id} className={has ? 'amt' : 'muted-cell'}>
+                  <td key={m.member_id} className={has ? 'amt' : 'muted-cell'}>
                     {has ? (
                       <>
                         {money(s!.amount)}
@@ -102,7 +102,7 @@ export function BillOverview({
           <tr>
             <td className="bill-cell">Each pays</td>
             {members.map((m) => (
-              <td key={m.id}>{money(memberTotal(m.id))}</td>
+              <td key={m.member_id}>{money(memberTotal(m.member_id))}</td>
             ))}
             <td className="col-total">{money(grandTotal)}</td>
           </tr>

@@ -4,7 +4,7 @@ import { Avatar, ExtrapolatedTag, Frame, ScreenNav, TopBar } from '../ui';
 
 /** Soft-remove / restore / add housemates. Extrapolated admin utility. */
 export function AdminMembers() {
-  const { house, addMember, softRemoveMember, restoreMember } = useApp();
+  const { house, addMember, softRemoveMember } = useApp();
   const [name, setName] = useState('');
 
   const add = () => {
@@ -16,7 +16,7 @@ export function AdminMembers() {
 
   return (
     <Frame>
-      <TopBar icon="LD" name={house.name} sub="Housemates" admin />
+      <TopBar icon="LD" name={house.display_name} sub="Housemates" admin />
       <div className="screen">
         <ScreenNav />
         <div className="card admin">
@@ -24,34 +24,28 @@ export function AdminMembers() {
           <div className="working-title">Housemates</div>
           <p className="muted-note" style={{ marginBottom: 12 }}>
             Soft-removing keeps someone in past bills but stops them recording new
-            days. You can restore them anytime.
+            days. They stay attached to history and never vanish.
           </p>
 
           {house.members.map((m) => (
-            <div className="member-pill" key={m.id} style={{ opacity: m.active ? 1 : 0.55 }}>
+            <div className="member-pill" key={m.member_id} style={{ opacity: m.active ? 1 : 0.55 }}>
               <div className="left">
                 <Avatar member={m} size="sm" />
                 <div>
                   <div className="name">{m.name}</div>
                   <div className="meta">
-                    {m.active ? `${m.awayDays.length} away days noted` : 'Soft-removed'}
+                    {m.active
+                      ? `${m.presence.length} presence ${m.presence.length === 1 ? 'range' : 'ranges'} recorded`
+                      : 'Soft-removed'}
                   </div>
                 </div>
               </div>
-              {m.active ? (
+              {m.active && (
                 <button
                   className="remove-x"
-                  onClick={() => softRemoveMember(m.id)}
+                  onClick={() => softRemoveMember(m.member_id)}
                 >
                   Remove
-                </button>
-              ) : (
-                <button
-                  className="remove-x"
-                  style={{ color: 'var(--accent-dark)' }}
-                  onClick={() => restoreMember(m.id)}
-                >
-                  Restore
                 </button>
               )}
             </div>
