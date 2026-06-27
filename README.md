@@ -6,6 +6,8 @@ Kongsi Bill splits household bills — electricity, water, gas, whatever — bet
 
 > **"Kongsi"** is Malay for *sharing something within a group* — which is pretty much the whole point. The app is built with Singapore and Malaysia housemates in mind.
 
+**Last updated:** 27 June 2026 · *The frontend is at prototype stage (the UI will be redesigned). The calculation, data model, Worker API, architecture, and deployment described below are settled.*
+
 ---
 
 ## Documentation
@@ -58,8 +60,8 @@ Kongsi Bill takes that spreadsheet off your hands, keeps a shared history for th
 2. **Housemates** tap a link to join, and mark the days they were home on a calendar.
 3. The person in charge enters each **bill** — what it's for, how much, and the dates it covers.
 4. The app works out each person's share based on the days they were home **during that bill's dates**, and shows its working.
-5. The PIC confirms the bill. After a short grace period, it locks so it can't be changed by accident.
-6. You can export the history as a spreadsheet — with the formulas built in, so anyone can check the numbers.
+5. A bill stays **open** (editable) with no time limit. When the cycle's settled, the PIC marks it **paid**, which closes it and freezes the days in its period so a settled split can't change.
+6. You can export the history as a spreadsheet — with the formulas built in, so anyone can check the numbers. *(Export is planned; the current prototype confirms the action but doesn't generate a file yet.)*
 
 ---
 
@@ -195,15 +197,17 @@ If your answer doesn't match the app's, **the app is wrong** — please open an 
 | Part         | What we use                                   | Why                                                          |
 |--------------|-----------------------------------------------|-------------------------------------------------------------|
 | Language     | **TypeScript** everywhere                     | Catches money and date mistakes early; shared types.        |
-| Frontend     | **React + Vite** (a static site)              | Good for the interactive calendar and live maths; builds to static files. |
+| Frontend     | **React + Vite** (a static site, *prototype stage*) | Good for the interactive calendar and live maths; builds to static files. The UI is a prototype and will be redesigned. |
 | The maths    | **Plain TypeScript, in your browser**         | The bit everyone audits — simple, in-house, no library.     |
-| Calendar     | **date-fns** + a small date-range picker      | Date logic and picking multiple ranges.                     |
-| Export       | **SheetJS** (`xlsx`), in the browser          | Spreadsheet with live formulas.                             |
-| The API      | **Cloudflare Workers** (just for storage)     | Saves and fetches data. Does none of the maths.             |
+| Calendar     | **Hand-written** (plain TypeScript + native dates) | Date logic and multi-range selection, written in-repo — no date library is installed yet. |
+| Export       | **SheetJS** (`xlsx`) — *planned*              | Intended for a spreadsheet with live formulas; not yet wired up (the export screen is a prototype placeholder). |
+| The API      | **Cloudflare Worker** (just for storage)      | Saves and fetches data under `/api`. Does none of the maths. |
 | Database     | **Cloudflare D1** (SQLite)                     | Stores houses, members, days, and bills.                    |
-| Hosting      | **Cloudflare Pages** + Workers + D1            | Serving the site itself is free and unlimited.              |
+| Hosting      | **A single Cloudflare Worker** (serves the site *and* the API) + D1 | One Worker serves the static build and the API from one origin; serving the site is free and unlimited. |
 
 **The guiding idea:** your browser does all the maths and everything you see; the server just remembers your data between visits. The calculation even works if the server's down.
+
+**One Worker, one origin.** The frontend and the API are served by the *same* Cloudflare Worker: anything under `/api` is the storage API, and every other path serves the static React app (with single-page-app fallback). Cloudflare can now serve static sites straight from a Worker and recommends Workers over Pages for new projects, so there's no separate Pages site. (Because everything is one origin, CORS no longer matters — the handling is still in the Worker but is effectively a no-op.)
 
 > **On purpose, we *don't* use:** Next.js, any login/account system, an always-on database server, or a CSS framework. Leaving these out keeps the whole thing lean and easy to look after. (Full reasoning in [docs/blueprint.md](docs/blueprint.md).)
 
@@ -211,27 +215,25 @@ If your answer doesn't match the app's, **the app is wrong** — please open an 
 
 ## Project layout
 
-> A rough guide — tweak it as the build takes shape.
+> Reflects the current layout; the frontend (`src/`) is prototype-stage and will be reorganised when the UI is redesigned.
 
 ```
 kongsi-bill/
 ├── README.md                 ← you're reading it (the maths source-of-truth)
 ├── DOCUMENTATION.md          ← the full usage guide (living document)
 ├── docs/
-│   └── blueprint.md          ← the full design & build blueprint
-├── src/
-│   ├── calc/                 ← the calculation, kept pure (with tests)
-│   │   ├── intervals.ts      ← merge & trim date ranges
-│   │   ├── split.ts          ← the day-weighted share maths
-│   │   ├── rounding.ts       ← optional rounding + leftover
-│   │   └── validate.ts       ← the sanity checks
-│   ├── components/           ← React UI pieces
-│   ├── pages/                ← join page, manage page, history, export
-│   ├── lib/                  ← API calls, date formatting, types
-│   └── types.ts              ← shared TypeScript types
-├── worker/                   ← the Cloudflare Worker (storage)
-│   └── index.ts
-├── migrations/               ← database schema changes
+│   └── blueprint.md          ← the design reference
+├── wrangler.toml             ← Worker config: static-assets binding, D1, rate limiter
+├── src/                      ← the React frontend (prototype)
+│   ├── calc.ts               ← the calculation: day-weighted split, rounding, reconciliation
+│   ├── api.ts                ← the only place the frontend calls the /api Worker
+│   ├── store.tsx             ← app state + actions (React context)
+│   ├── types.ts              ← shared TypeScript types (mirror the Worker JSON contract)
+│   ├── Calendar.tsx, clipboard.ts, …  ← UI building blocks
+│   └── screens/              ← the screens (admin + member flows)
+├── worker/
+│   └── index.ts              ← the single Cloudflare Worker (serves static site + /api)
+├── migrations/               ← D1 schema: 0001_init, 0002_drop_lock, 0003_confirm_and_paid
 └── package.json
 ```
 
@@ -239,43 +241,37 @@ kongsi-bill/
 
 ## Running it locally
 
-**You'll need:** [Node.js](https://nodejs.org) (current LTS) and a free [Cloudflare account](https://dash.cloudflare.com/sign-up).
+**You'll need:** [Node.js](https://nodejs.org) (current LTS) and a free [Cloudflare account](https://dash.cloudflare.com/sign-up). Wrangler comes in as a dev dependency, so `npx wrangler` works after `npm install`.
 
 ```bash
-# 1. Set up the project (first time only — skip if the repo already exists)
-npm create vite@latest kongsi-bill -- --template react-ts
-
-# 2. Install the dependencies
+# 1. Install dependencies
 npm install
 
-# 3. Start the frontend
+# 2. Fast UI loop — Vite dev server (frontend only, no API)
 npm run dev
 
-# 4. The Worker + database (Cloudflare's CLI)
-npm install -g wrangler        # or just use npx wrangler
-wrangler login
-wrangler d1 create kongsi-bill # create the database
-wrangler dev                   # run the Worker locally
+# 3. The real thing — one Worker serving the built site + the /api routes + D1
+npm run build                  # tsc + vite build → dist/
+npx wrangler dev               # serves dist/ via the assets binding AND the API
+
+# First-time database setup (once):
+npx wrangler login
+npx wrangler d1 create kongsi-bill   # then apply migrations/ with `wrangler d1 migrations apply`
 ```
 
-Add the main libraries when you reach those parts of the build:
-
-```bash
-npm install date-fns xlsx
-# plus a small React date-range picker of your choosing
-```
+> Running `npm run dev` alone gives you the UI with no backend (the app falls back to an offline demo seed). To exercise the live `/api` contract and D1, use `npx wrangler dev` against the built `dist/`. If you ever need the Vite dev server to talk to a *remote* Worker, point `VITE_API_BASE` at it; otherwise the frontend calls `/api` on its own origin.
 
 ---
 
 ## Putting it online
 
-The repo is hooked up to **Cloudflare Pages**, which rebuilds and redeploys automatically on every push to the main branch.
+The repo is connected to Cloudflare through its **GitHub (Git) integration**, which rebuilds and redeploys automatically on every push to the main branch.
 
-- **Frontend** → Cloudflare Pages (static files, free and unlimited).
-- **API** → the Cloudflare Worker, pushed live with `wrangler deploy`.
-- **Database** → Cloudflare D1, with changes applied through `migrations/`.
+- On push, Cloudflare runs the build (`npm run build`) and then `npx wrangler deploy`.
+- `wrangler deploy` publishes the **single Worker** and uploads the Vite `dist/` output via the static-assets binding — so one deploy ships **both** the site and the API.
+- **Database** → Cloudflare D1, with schema changes applied through `migrations/`.
 
-The site runs on the free `*.pages.dev` address. (No custom domain — not needed.)
+The site runs on the free `*.workers.dev` address. (No custom domain — not needed.)
 
 ---
 
@@ -283,7 +279,7 @@ The site runs on the free `*.pages.dev` address. (No custom domain — not neede
 
 Realistically, **$0 a month.** The app does a handful of saves and reads per billing cycle per house, well inside Cloudflare's free limits. Loading the app is always free and unlimited; only save/fetch calls count, and they're nowhere near the cap. On the free tier Cloudflare just **stops** at a limit rather than billing you, so a surprise charge basically can't happen at this size. You'd only reach the flat $5/month plan with thousands of active houses.
 
-Upkeep is light and occasional: dependency updates a few times a year; a little work if the stored-data shape ever changes (made easier by versioning it from day one); regenerating a code if one leaks; and a one-time setup of rate limiting and a usage alert.
+Upkeep is light and occasional: dependency updates a few times a year; a little work if the stored-data shape ever changes (made easier by versioning it from day one); regenerating a code if one leaks; and a usage alert as a backstop. Rate limiting is already in place — Cloudflare's Workers Rate Limiting binding (`RATE_LIMITER` in `wrangler.toml`), set to 65 requests per 60 seconds per house, returning a `429` when exceeded.
 
 ---
 

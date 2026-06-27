@@ -2,9 +2,9 @@
 
 *A day-weighted utility bill splitter for shared households.*
 
-**Document status:** v1 design, locked. This is the single source of truth for what Kongsi Bill is, what it does, and how it is built. It is the brief for the build, the seed for the repository README, and the reference for the UI/UX design stage.
+**Document status:** design reference. This is the design reference for what Kongsi Bill is, what it does, and how it is built. It seeds the repository README and guides the UI/UX design stage. Where the built code and config have moved on from the original v1 design, this document has been reconciled to the code (the code + config in `worker/`, `wrangler.toml`, `src/`, and `migrations/` are the source of truth); the frontend remains at prototype stage and its screen design is not final.
 
-**Last updated:** 24 June 2026
+**Last updated:** 27 June 2026
 
 ---
 
@@ -87,8 +87,9 @@ The sum reconciles with the bill total. Water and any other utility are computed
 - **Whole days only.** A day counts if the person was present at any point that day. No half-days.
 - **Clip to the billing period.** A person's presence is always intersected with each bill's period; days outside the period never count toward that bill. A person may safely record dates that fall outside any bill — they simply count toward nothing.
 - **Cost is proportional to days present.** Actual usage intensity (e.g. someone running air-conditioning all day) is *not* modelled. This is intentional, for legibility and because per-day usage cannot be verified. Documented as an explicit assumption.
-- **Overlapping/duplicate ranges are merged.** If a person records 1–10 Jan and 5–15 Jan, the overlap is merged so days are not double-counted. (Automatic, because presence is stored as real dates.)
-- **Zero-denominator guard.** If `total_person_days = 0` for a bill (nobody present in the period, or no data entered), the split is undefined and is **flagged**, not crashed.
+- **Overlapping/duplicate ranges are merged.** If a person records 1–10 Jan and 5–15 Jan, the overlap is merged so days are not double-counted. (Automatic, because presence is stored as real dates; the merge happens server-side in the Worker on save.)
+- **Default to present for the whole period.** Presence is stored as the ranges a member was *present* (home). A member who has recorded **no** presence ranges at all is counted as present for the entire bill period, not as zero — an unmarked housemate still takes a fair share rather than silently dropping out. A member counts as zero only if they have recorded ranges and none of them overlap the bill's period.
+- **Zero-denominator guard.** If `total_person_days = 0` for a bill (everyone with recorded ranges is away across the whole period), the split is undefined and is **flagged**, not crashed.
 - **Reconciliation check.** The sum of raw shares must equal the bill amount within a small tolerance; any mismatch is flagged with a plain-language explanation of the likely cause.
 
 ### 3.4 Optional rounding
@@ -128,14 +129,18 @@ No individual user accounts, no passwords, no email/login, no always-on database
 | Code | Held by | Can do |
 |------|---------|--------|
 | **Member code** | All housemates | Join the house, record their own presence days, view splits. |
-| **Admin code** | The PIC only | Everything members can, plus add/edit bills, calculate, finalise, manage members, export, override locks. |
+| **Admin code** | The PIC only | Everything members can, plus add/edit bills, calculate, mark a bill paid (settle/close it), manage members, regenerate the member code, export. |
 
-The codes *are* the access mechanism — there is no separate identity. This is the deliberate trade that removes authentication entirely. Its accepted limitations: the app cannot prove *which* member acted (no per-person accountability), and security depends on codes being kept within the house.
+Admin is a **capability, not a separate entity**: there is no `admin_member_id` and no admin record. The PIC is simply whoever holds the admin code, and is otherwise an ordinary member (or not a member at all — see §5.2.1). The codes *are* the access mechanism — there is no separate identity. This is the deliberate trade that removes authentication entirely. Its accepted limitations: the app cannot prove *which* member acted (no per-person accountability), and security depends on codes being kept within the house.
+
+### 5.2.1 The creator and house membership
+
+Because the admin is just the holder of the admin code, creating a house does **not** automatically create a member for the creator. At setup the creator is **prompted** to add themselves as the first housemate (if they also live there and share the bills) but is not forced to — the add-housemates step can be skipped. A house may therefore validly have **zero members**; the split calculation handles an empty house by flagging "no housemates yet" rather than breaking.
 
 ### 5.3 Entry paths
 
 - **Members** use a **one-tap join link** with the member code embedded:
-  `kongsibill.pages.dev/join?house=ABC123&code=XYZ`
+  `kongsibill.workers.dev/join?house=ABC123&code=XYZ`
   This drops them straight into their house's day-entry view with no typing. The link carries the keys, so it lives only in the house group chat.
 - **Admins** use a separate **manage path** (`/manage`) and enter the admin code. The admin code is **never embedded in a link** — it stays typed and private.
 - Asymmetry by design: member code travels in links (convenience); admin code never does (protection).
@@ -150,10 +155,12 @@ The codes *are* the access mechanism — there is no separate identity. This is 
 
 A focused reference for whoever becomes PIC. The admin code is the master key for a single house and the only proof of PIC status (there are no accounts).
 
-- **Powers it unlocks** (everything a member can do, plus): add/edit bills; calculate and finalise (confirming starts the 7-day grace, then lock); override a locked bill (logged to the change log); add/soft-remove members; export latest or full history; regenerate codes; hand over to the next PIC.
-- **When used:** roughly once per bill (add bill → calculate → confirm), plus off-cycle housekeeping (member changes, a leaked code, fixing a locked bill).
+- **Powers it unlocks** (everything a member can do, plus): add/edit bills while they are open; calculate the split; **mark a bill paid**, which closes (settles) it and locks its period; add/soft-remove members; export latest or full history; regenerate the member code; hand over to the next PIC. (There is no time-based lock and no admin override — an open bill stays fully editable for as long as it is open; see §7.)
+- **When used:** roughly once per bill (add bill → collect days → calculate → mark paid), plus off-cycle housekeeping (member changes, a leaked code).
 - **How used — typed, never linked:** the admin reaches the manage path (`/manage`) and **types the admin code by hand each time**. Unlike the member code, it is never embedded in a link, because the member join link is pasted into the house group chat where it is visible. Typing keeps the admin code out of chat history and link previews. This is the deliberate asymmetry from §5.3.
 - **Unrecoverable:** with no accounts there is no reset. A lost admin code with no holder orphans the house (members can still view, but no one can administer). This is why the save-codes step at creation (§5.4) is treated as the one critical, unskippable moment, and why handoff means deliberately passing the code on.
+
+Note the admin code is the only code that is *typed* and never travels in a link. The two codes are otherwise symmetric in storage — both live on the `houses` row (`member_code`, `admin_code`); there is no member record marking who the admin is.
 
 ---
 
@@ -176,9 +183,11 @@ schema_version    integer
 member_id         string
 house_id          string   (which house)
 name              string
-active            boolean   (false = soft-removed; stays attached to past bills)
+active            boolean   (false = soft-removed; stays attached to past bills; soft-remove is one-way — there is no restore endpoint)
+days_confirmed    boolean   (readiness signal: "my days are correct"; auto-cleared whenever the member edits their presence)  [added in migration 0003]
 schema_version    integer
 ```
+`days_confirmed` is purely a readiness flag for the admin's view (who has reviewed their days). It stores no day data, is set by the `confirm-days` endpoint, and is reset to `false` by the Worker whenever that member's presence ranges change.
 
 ### 6.3 Presence record (per member)
 ```
@@ -186,29 +195,27 @@ member_id         string
 ranges            list of { start: date, end: date }   (multiple ranges; overlaps merged on save)
 schema_version    integer
 ```
-Each member owns their own presence record, so two members entering days touch different records and cannot overwrite each other.
+Each member owns their own presence ranges (stored one row per range in `presence_ranges`), so two members entering days touch different records and cannot overwrite each other. Ranges are the days the member was **present** (home). Overlapping/adjacent ranges are merged in the Worker on save. A member with no ranges at all is treated as present for the whole bill period by the calculation (§3.3).
 
 ### 6.4 Bill
 ```
 bill_id           string
 house_id          string
-utility_label     string   (free text: "Electricity", "Water", "Gas", "Internet"…)
-amount            number
+utility_label     string   (single free text: "Electricity", "Water", "Gas", "Internet", or anything typed)
+amount            number    (record-keeping only; never used to compute the split — that is done in the browser)
 period_start      date
 period_end        date
-status            enum     (draft | confirmed | locked)
-confirmed_at      date     (starts the grace window)
+status            enum      (draft | paid; see §7)
 schema_version    integer
 ```
+Notes:
+- `utility_label` is a single free-text field. The UI offers a convenience dropdown (Electricity / Water / Gas / Internet / Other → free text) that simply resolves to this one label; the preset list never travels to the API.
+- `status` carries the two-state lifecycle: `draft` = **Open** (fully editable) and `paid` = **Closed** (settled/frozen). The schema's `CHECK` constraint also still permits the legacy value `'confirmed'` (the original three-stage design), but it is **unused** by the current product — the lifecycle is just draft → paid.
+- The original `confirmed_at` column (which started the 7-day grace window) was **dropped in migration 0002**; there is no grace window any more.
 
-### 6.5 Change log entry
-```
-log_id            string
-house_id          string
-timestamp         date
-action            string   (what changed; includes admin overrides after lock)
-detail            string
-```
+### 6.5 Change log — removed
+
+The original design included a `change_log` table to record edits and admin overrides. It has been **removed entirely** — there is no change-log table, no audit trail, and nothing is "logged." This follows from dropping the lock/override model (§7): there are no overrides to record. Edits to an open bill are simply allowed; once a bill is paid its period is frozen server-side (§7).
 
 ### 6.6 Date handling
 
@@ -218,17 +225,24 @@ detail            string
 
 ### 6.7 Soft-delete & lifecycle
 
-- Departed housemates are **soft-removed** (`active = false`): they no longer appear in new bills but remain attached to past bills so history stays intact and totals still reconcile.
-- Nothing is hard-deleted; records are marked inactive. The change log makes bad edits visible and recoverable.
+- Departed housemates are **soft-removed** (`active = false`): they no longer appear in new bills but remain attached to past bills so history stays intact and totals still reconcile. Soft-remove is **one-way** — there is no restore endpoint in the API.
+- Members are never hard-deleted. **Bills**, by contrast, *can* be deleted outright (the "remove bill" action hard-deletes the row), because a bill has no dependents — presence is tied to members, not bills — so removing a mistaken bill leaves no dangling references and never touches anyone's history.
 
 ---
 
-## 7. Bill lifecycle (grace & lock)
+## 7. Bill lifecycle (Open → Closed)
 
-1. **Draft** — admin adds/edits a bill freely.
-2. **Confirmed** — admin confirms; a **7-day grace period** begins during which edits are still allowed. A reminder notice surfaces as the window closes.
-3. **Locked** — after 7 days the bill locks. Members cannot edit it.
-4. **Admin override** — even after lock, the **admin code** can force an edit; every override is written to the **change log** so it is visible. This keeps the lock meaningful for members while leaving an escape hatch for genuine corrections.
+The lifecycle is two states. The original three-stage draft → confirmed → locked model — with its 7-day grace period, time-based lock, and admin override — is **gone**.
+
+1. **Open** (`status = draft`) — the bill is fully editable: the admin can change its amount, label, and dates, and housemates can keep marking their days. **There is no time limit** — an open bill stays editable indefinitely. Nothing about the passage of time locks it.
+2. **Closed** (`status = paid`) — the admin marks the bill **paid** once it has been settled (money collected, landlord paid). This is the lock: marking a bill paid freezes it.
+
+**Marking a bill paid is the only lock**, and it is **enforced server-side**, not merely in the UI:
+
+- The Worker rejects (HTTP **409**) any presence edit whose date range overlaps the period of any **paid** bill in that house. So once a bill covering, say, 1–31 May is paid, no member's days inside that window can be changed — the settled split can't shift under everyone's feet. This is a date-range overlap check against paid bills' periods, not a status flag on presence rows. (It is purely a validation guard; the Worker still computes no shares — see §10.1.)
+- While a bill is **open** (`draft`), it imposes no such restriction; days inside an open bill's period stay editable.
+
+There is no "reopen," grace window, time-based lock, or admin override in the current product. (`status` can still be set back to `draft` via the bill-upsert endpoint, which would lift the server-side freeze on that period — but there is no dedicated override/audit mechanism, and nothing is logged.)
 
 ---
 
@@ -240,7 +254,7 @@ Three journeys plus lifecycle actions. (A visual flowchart of this exists alongs
 1. Create house (first run, no data).
 2. Receive room ID + two codes.
 3. **Save codes** (copy/download, confirm saved) — the one unrecoverable step, given prominence.
-4. Add housemates (variable count, no code edits).
+4. Add housemates (variable count, no code edits). The creator is **prompted to add themselves first** if they share the bills, but this is optional and the step can be skipped — a house may have zero members at this point (§5.2.1).
 5. Share the member join link into the house chat.
 
 ### Journey B — Member records presence
@@ -248,19 +262,19 @@ Three journeys plus lifecycle actions. (A visual flowchart of this exists alongs
 2. Select days present on a calendar; add multiple date ranges to cover gaps when away.
 3. Save own record (overlaps auto-merged).
 
-*(Members can update presence any time before a bill is confirmed; the admin can also enter days on a member's behalf. B feeding into C is the typical path, not the only one.)*
+*(Members can update presence any time while the relevant bill is still open; once a bill covering those dates is marked paid, those days are frozen server-side (§7). The admin can also enter days on a member's behalf. B feeding into C is the typical path, not the only one.)*
 
 ### Journey C — Admin calculates & finalises
 1. Add a bill (utility label, amount, billing period).
 2. App computes shares from everyone's presence, clipped to the bill's period.
 3. Validate — reconciliation and zero-denominator flags, with actionable messages.
 4. Optional rounding toggle (down/up, off by default); remainder surfaced.
-5. Confirm bill → starts the 7-day grace, then locks (admin can override, logged).
+5. When the cycle is settled, **mark the bill paid** → it closes and its period is frozen server-side (§7). Until then it stays open and editable.
 
 ### View, export & lifecycle
 - View history — a flat list of bills, each with its own period.
-- Export — **latest** bill or **full history**, as XLSX with live formulas.
-- Lifecycle — soft-remove a departed housemate; regenerate a leaked code; recover from a bad edit via the change log.
+- Export — **latest** bill or **full history** (planned as XLSX with live formulas; see §10.2 — the current frontend prototype confirms the action but does not yet generate a file).
+- Lifecycle — soft-remove a departed housemate (one-way); regenerate a leaked code; delete a mistaken bill.
 
 ---
 
@@ -273,7 +287,7 @@ Carried into the dedicated UI/UX stage; recorded here so they are not lost.
 - **Copy last period's pattern** for recurring schedules. *(Comfort feature — v2.)*
 - **Show the working**, not just the answer: display `Alice: 24/67 days × $100 = $35.82` so the on-screen result mirrors the audit principle.
 - **Actionable flags:** a mismatch says what to do, not just that something's wrong.
-- **Preview before confirm:** since confirm starts the lock, show a clear summary with confirm/cancel.
+- **Preview before settling:** since marking a bill paid closes it and freezes its period, show a clear summary with confirm/cancel before that step.
 - **One-tap join link** to eliminate the most error-prone data entry.
 - **Save-codes as the path of least resistance:** copy-all, download, "I've saved these" gate.
 - **House info card** for clean PIC handoff.
@@ -285,24 +299,39 @@ Carried into the dedicated UI/UX stage; recorded here so they are not lost.
 
 ### 10.1 Guiding principle
 
-Push as much as possible into static files and the browser; keep the server doing the minimum. The app is fundamentally arithmetic plus a little storage, so the core logic is client-side, instant, free to run, and works even if the backend is down. The server only stores and retrieves — it never calculates (it re-validates on save as a safety net only).
+Push as much as possible into static files and the browser; keep the server doing the minimum. The app is fundamentally arithmetic plus a little storage, so the core logic is client-side, instant, free to run, and works even if the backend is down. The server only stores and retrieves — it **never calculates** (it validates input shape on save as a safety net only). The one piece of business-rule enforcement it does perform — rejecting presence edits that overlap a paid bill's period (§7) — is a date-range *validation guard*, not a calculation: it still never sums days or splits an amount.
 
 ### 10.2 Stack
 
 | Layer | Choice | Why |
 |-------|--------|-----|
 | Language | **TypeScript** throughout | Catches money/date/schema bugs at write time; self-documenting for handoff; shared types across all layers. |
-| Frontend | **React + Vite** | Stateful calendar and live calculation suit React; Vite builds a plain static bundle. **Not Next.js** — no server rendering needed; Next.js would add complexity only to suppress it. |
-| Calculation | **Plain TypeScript in the browser** | The auditable heart of the app; owned in-repo, no library. |
-| Calendar/date | **date-fns** + a lightweight React date-range picker | Lean interval logic and multi-range selection without a heavy calendar suite. |
-| Export | **SheetJS (`xlsx`)**, client-side | Writes XLSX with live formulas; server never touches it. |
-| API | **Cloudflare Workers** (thin storage API) | Receives saves/reads, validates, writes/returns. No rendering, no calculation. |
+| Frontend | **React + Vite** (a static SPA, **prototype stage**) | Stateful calendar and live calculation suit React; Vite builds a plain static bundle (`dist/`). **Not Next.js** — no server rendering needed. The current UI/layout is a prototype and will be redesigned; the data/API contract it speaks is settled. |
+| Calculation | **Plain TypeScript in the browser** (`src/calc.ts`) | The auditable heart of the app; owned in-repo, no library. |
+| Calendar/date | **Hand-rolled** calendar + native `Date` interval helpers | Date logic and multi-range selection are written in-repo (`src/Calendar.tsx`, `src/calc.ts`) with no date library currently installed. *(The original plan named `date-fns` + a picker; not yet a dependency — see flag below.)* |
+| Export | Planned: **SheetJS (`xlsx`)**, client-side, XLSX with live formulas | The export *screen* exists in the prototype but currently only confirms the action — no file is generated and `xlsx` is not yet a dependency. |
+| API | **Cloudflare Worker** (thin storage API, hand-routed, no framework) | Receives saves/reads under `/api`, validates input, writes/returns JSON. No rendering, no calculation. |
 | Database | **Cloudflare D1 (SQLite)** | Data is relational (houses → members → presence/bills); D1 queries this naturally where KV would force hand-rolled JSON blobs. Supports migrations for schema versioning. |
-| Hosting | **Cloudflare Pages** (frontend) + Workers + D1, one account | Static assets served free and unlimited; only save/read calls count against limits. |
+| Hosting | **A single Cloudflare Worker** serving both the static site and the API, plus D1, one account | One Worker, one origin: it serves the Vite build via a static-assets binding *and* the `/api` routes. Static asset serving is free; only API calls count against limits. |
+
+#### Unified-Worker architecture (revised from the original Pages design)
+
+The original blueprint described a **Cloudflare Pages** frontend plus a **separate** API Worker. That has been deliberately revised: the app is now **one Cloudflare Worker that serves both the static frontend and the API from the same origin.** Cloudflare's platform changed since the blueprint was first written — Workers can now serve static assets directly, and Cloudflare recommends Workers over Pages for new projects — so the two-service split is no longer needed.
+
+How it works in code (`worker/index.ts` + `wrangler.toml`):
+
+- `wrangler.toml` declares a static-assets binding (`[assets]`, `directory = "./dist/"`, `binding = "ASSETS"`) with `not_found_handling = "single-page-application"`.
+- The Worker routes by path prefix: anything under **`/api`** is handled by the storage API (e.g. `/api/house/:id`, `/api/house/:id/member/...`); **every other path** is served from the static-assets binding, with SPA fallback to `index.html` so client-side React routes resolve. The `/api` namespace guarantees API paths can never collide with front-end routes.
+- **CORS is now moot** — frontend and API share one origin, so cross-origin requests don't arise. The CORS headers/preflight handling remain in the Worker (harmless, and still correct if the API is ever called from another origin during local dev via `VITE_API_BASE`).
 
 ### 10.3 Abuse protection
 
-Mostly configuration, not code: rate limiting on the Worker route; valid-room-ID required before any write (writes to non-existent houses rejected); input validation in the Worker; default DDoS protection; a usage alert as backstop.
+Mostly configuration, not code:
+
+- **Rate limiting** is implemented via Cloudflare's **Workers Rate Limiting binding** (`RATE_LIMITER`), declared in `wrangler.toml` as `[[ratelimits]]` with `simple = { limit = 65, period = 60 }` — i.e. **65 requests per 60 seconds**, keyed **per house** (the limiter key is the `house_id`) so one noisy house can never starve another. It covers every per-house read and write; house creation (which has no house ID yet) is intentionally not throttled. A throttled request gets HTTP **429** with a `Retry-After`. (The binding may be absent in some local-dev setups, so the Worker guards each call with `if (env.RATE_LIMITER)`.)
+- **Valid-room-ID required before any write** — requests to a non-existent house are rejected (404).
+- **Input validation in the Worker** on every write.
+- **Default DDoS protection** from the platform, plus a usage alert as backstop.
 
 ---
 
@@ -317,20 +346,20 @@ Mostly configuration, not code: rate limiting on the Worker route; valid-room-ID
   ```
 - **Wrangler** — Cloudflare CLI for developing/deploying the Worker and managing D1 (tables, migrations, data).
 
-### 11.2 Libraries (added to the project)
-- `date-fns` and a lightweight React date-range picker.
-- `xlsx` (SheetJS).
-- *(The calculation logic is hand-written TypeScript — no library.)*
+### 11.2 Libraries
+- Runtime dependencies are currently just **React** and **React DOM**; the toolchain (Vite, TypeScript, ESLint, Wrangler) is in devDependencies.
+- The calculation, the calendar, and all date/interval logic are **hand-written TypeScript — no library.**
+- *Planned but not yet installed:* `date-fns` (or similar) and a date-range picker, and `xlsx` (SheetJS) for export. These are referenced as the intended approach but are not current dependencies.
 
 ### 11.3 Accounts & environment
-- **Cloudflare account** (free) — Pages, Workers, D1.
-- **GitHub account** (free) — hosts the repo (also the formula source-of-truth); Cloudflare Pages auto-deploys on push.
+- **Cloudflare account** (free) — Workers (serving both static assets and the API), D1.
+- **GitHub account** (free) — hosts the repo (also the formula source-of-truth). Deployment is **auto-deploy from GitHub via Cloudflare's Git integration**: on push, Cloudflare runs the build (`npm run build`) and then `npx wrangler deploy`, which uploads the Vite `dist/` output via the static-assets binding and publishes the Worker.
 - **VS Code** (free) — editor with built-in TypeScript support.
 - **Git** — version control and the deploy trigger.
 
 ### 11.4 Optional
 - ESLint + Prettier (basic ESLint ships with the template).
-- *Custom domain — declined; the free `.pages.dev` subdomain is used.*
+- *Custom domain — declined; the free `*.workers.dev` subdomain is used.*
 
 ### 11.5 Not required
 No database server to install, no Docker, no backend framework, no auth library, no state-management library, no CSS framework. Everything except Node lives inside the project via npm, keeping the machine clean and the project self-contained.
