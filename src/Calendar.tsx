@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Bill, DateRange } from './types';
 import { useApp } from './store';
 import { isInPeriod, presentDaysFromRanges, rangesFromPresentDays } from './calc';
@@ -61,15 +61,33 @@ export function Calendar({
   const seed = (): Set<string> => {
     if (!member) return new Set();
     if (member.presence.length === 0) {
-      // Default to present: pre-select every day inside any of the given bills.
+      // Default to present: pre-select every EDITABLE day. Days inside a
+      // non-draft (locked) bill are skipped — they can't be tapped, and
+      // pre-selecting them would re-send them on save and trip the Worker's
+      // paid-period 409.
       const s = new Set<string>();
-      for (const b of bills) for (const k of periodKeys(b)) s.add(k);
+      for (const b of bills) {
+        if (b.status !== 'draft') continue;
+        for (const k of periodKeys(b)) s.add(k);
+      }
       return s;
     }
     return presentDaysFromRanges(member.presence);
   };
 
   const [present, setPresent] = useState<Set<string>>(seed);
+
+  // The full set of EDITABLE day-keys (in a draft bill's period; locked bills
+  // contribute none). Used to tell an untouched default-present selection from a
+  // real one: if every editable day is still present, nothing was deselected.
+  const editableDays = useMemo(() => {
+    const s = new Set<string>();
+    for (const b of bills) {
+      if (b.status !== 'draft') continue;
+      for (const k of periodKeys(b)) s.add(k);
+    }
+    return s;
+  }, [bills]);
 
   // Reseed when the member being edited changes (admin editing several people).
   useEffect(() => {
@@ -83,8 +101,14 @@ export function Calendar({
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   useEffect(() => {
-    onChangeRef.current?.(rangesFromPresentDays(present));
-  }, [present]);
+    // If the present set still equals the full set of editable days, the member
+    // hasn't deselected anything → report [] so we never store an explicit
+    // whole-period range (which would wrongly exclude future bills' periods).
+    const untouched =
+      present.size === editableDays.size &&
+      [...present].every((k) => editableDays.has(k));
+    onChangeRef.current?.(untouched ? [] : rangesFromPresentDays(present));
+  }, [present, editableDays]);
 
   if (!member) return null;
 

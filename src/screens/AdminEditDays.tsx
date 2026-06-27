@@ -10,7 +10,7 @@ import type { DateRange } from '../types';
  * won't mark their own away days.
  */
 export function AdminEditDays() {
-  const { house, setPresence, confirmDays } = useApp();
+  const { house, setPresence, confirmDays, error } = useApp();
   const [memberId, setMemberId] = useState<string | null>(null);
   const [draft, setDraft] = useState<DateRange[] | null>(null);
 
@@ -64,6 +64,11 @@ export function AdminEditDays() {
             <button className="btn-primary" onClick={save}>
               Save {selected.name}’s days
             </button>
+            {error && (
+              <p className="muted-note" style={{ color: 'var(--warn-ink)', marginTop: 8 }}>
+                {error}
+              </p>
+            )}
           </>
         )}
       </div>

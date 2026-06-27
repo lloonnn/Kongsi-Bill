@@ -10,7 +10,8 @@ import type { DateRange } from '../types';
  * presence with the same calendar everyone uses.
  */
 export function AdminMyDays() {
-  const { house, back, currentMemberId, setCurrentMember, setPresence, confirmDays } = useApp();
+  const { house, back, currentMemberId, setCurrentMember, setPresence, confirmDays, error } =
+    useApp();
   const members = house.members.filter((m) => m.active);
   const me = members.find((m) => m.member_id === currentMemberId) ?? null;
   const [draft, setDraft] = useState<DateRange[] | null>(null);
@@ -79,6 +80,11 @@ export function AdminMyDays() {
             <button className="btn-primary" onClick={save}>
               Save &amp; mark my days correct
             </button>
+            {error && (
+              <p className="muted-note" style={{ color: 'var(--warn-ink)', marginTop: 8 }}>
+                {error}
+              </p>
+            )}
           </>
         )}
       </div>

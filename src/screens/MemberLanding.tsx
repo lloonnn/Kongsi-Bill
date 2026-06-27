@@ -122,7 +122,7 @@ function NoBills() {
 }
 
 function ActiveBills({ member }: { member: Member }) {
-  const { house, setPresence, confirmDays } = useApp();
+  const { house, setPresence, confirmDays, error } = useApp();
   const bills = house.bills;
   const [draft, setDraft] = useState<DateRange[] | null>(null);
   // Pending = the calendar has unsaved edits (so the confirmed badge is stale).
@@ -190,6 +190,11 @@ function ActiveBills({ member }: { member: Member }) {
         <button className="btn-primary" onClick={save}>
           {member.days_confirmed ? 'Save changes & mark correct' : 'These are right — mark my days correct'}
         </button>
+      )}
+      {error && (
+        <p className="muted-note" style={{ color: 'var(--warn-ink)', marginTop: 8 }}>
+          {error}
+        </p>
       )}
     </>
   );

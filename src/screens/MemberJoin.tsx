@@ -20,7 +20,7 @@ function normalizeCode(s: string): string {
  *   code → welcome → recognize-or-name → calendar
  */
 export function MemberJoin() {
-  const { house, go, setCurrentMember, addMember, setPresence, confirmDays } = useApp();
+  const { house, go, setCurrentMember, addMember, setPresence, confirmDays, error } = useApp();
   const [step, setStep] = useState<Step>('code');
   const [codeInput, setCodeInput] = useState('');
   const [codeError, setCodeError] = useState(false);
@@ -204,6 +204,11 @@ export function MemberJoin() {
             <button className="btn-primary" onClick={saveDays}>
               Save &amp; mark my days correct
             </button>
+            {error && (
+              <p className="muted-note" style={{ color: 'var(--warn-ink)', marginTop: 8 }}>
+                {error}
+              </p>
+            )}
           </>
         )}
       </div>
