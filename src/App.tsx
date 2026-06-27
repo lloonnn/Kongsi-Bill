@@ -15,6 +15,7 @@ import { AdminBillDetail } from './screens/AdminBillDetail';
 import { AdminExport } from './screens/AdminExport';
 import { AdminMembers } from './screens/AdminMembers';
 import { AdminInvite } from './screens/AdminInvite';
+import { AdminManage } from './screens/AdminManage';
 
 const SCREENS: Record<RouteName, () => ReactElement> = {
   hub: Hub,
@@ -32,6 +33,7 @@ const SCREENS: Record<RouteName, () => ReactElement> = {
   'admin-export': AdminExport,
   'admin-members': AdminMembers,
   'admin-invite': AdminInvite,
+  'admin-manage': AdminManage,
 };
 
 // Quick jumps for click-through review (prototype scaffolding, not product).
@@ -41,6 +43,7 @@ const DEV_LINKS: { name: RouteName; label: string }[] = [
   { name: 'member-landing', label: 'Member landing' },
   { name: 'admin-setup', label: 'Admin setup' },
   { name: 'admin-dashboard', label: 'Admin house' },
+  { name: 'admin-manage', label: 'Admin manage' },
 ];
 
 function Router() {

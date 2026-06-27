@@ -31,7 +31,8 @@ export type RouteName =
   | 'admin-bill-detail'
   | 'admin-export'
   | 'admin-members'
-  | 'admin-invite';
+  | 'admin-invite'
+  | 'admin-manage';
 
 export interface Route {
   name: RouteName;
@@ -87,6 +88,20 @@ function isJoinLink(): boolean {
   }
 }
 
+/**
+ * True when the app was opened on the admin manage path (`/manage`). Like
+ * isJoinLink(), this is a mount-time check only (the stack router has no URL
+ * mapping); it seeds the starting screen and is never re-evaluated on later
+ * navigation. The admin code is typed in on the screen, never read from the URL.
+ */
+function isManageLink(): boolean {
+  try {
+    return window.location.pathname.replace(/\/+$/, '').endsWith('/manage');
+  } catch {
+    return false;
+  }
+}
+
 interface AppContextValue {
   house: HouseState;
   /** Admin code if the current user holds it (only the admin does). */
@@ -134,7 +149,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return s ? s.adminCode : initialAdminCode;
   });
   const [stack, setStack] = useState<Route[]>(() =>
-    isJoinLink() ? [{ name: 'member-join' }] : [{ name: 'hub' }]
+    isJoinLink()
+      ? [{ name: 'member-join' }]
+      : isManageLink()
+        ? [{ name: 'admin-manage' }]
+        : [{ name: 'hub' }]
   );
   const [currentMemberId, setCurrentMemberId] = useState<string | null>('m-bob');
   const [error, setError] = useState<string | null>(null);
