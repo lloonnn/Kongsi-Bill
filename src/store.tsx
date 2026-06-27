@@ -123,6 +123,14 @@ interface AppContextValue {
   // house lifecycle
   createHouse: (displayName: string) => Promise<api.CreatedHouse>;
   joinHouse: (houseId: string, code: string) => Promise<void>;
+  /**
+   * Verify a typed house id + admin code against the Worker and, on success,
+   * attach that house to this session as admin (so admin actions are unlocked).
+   * Works with NO prior session — the house id is typed by hand, so a cold
+   * device can sign back in. Throws if the code is rejected; does not navigate.
+   * Both values are typed, never read from a URL/query param.
+   */
+  becomeAdmin: (houseId: string, adminCodeInput: string) => Promise<void>;
   // mutations (all persist through the Worker when connected)
   addMember: (name: string) => Promise<Member>;
   softRemoveMember: (memberId: string) => Promise<void>;
@@ -235,6 +243,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
         saveSession(next);
         setSession(next);
         setAdminCode(null);
+        setHouse(state);
+      });
+
+    // Become admin using a TYPED house id + admin code (no prior session
+    // required — this is how a cold device signs back in). Verify by reading the
+    // live house with the code as X-Admin-Code (GET /house/:id rejects a wrong
+    // admin code with 401), then attach that house to the session as admin.
+    const becomeAdmin = (houseId: string, adminCodeInput: string) =>
+      run(async () => {
+        // Throws (ApiError 401/404/…) if the id/code don't match — nothing below
+        // runs, so adminCode/session are left untouched on failure.
+        const state = await api.getHouseState(houseId, { adminCode: adminCodeInput });
+        const next: Session = {
+          houseId,
+          // Keep the member code only when re-pointing to the SAME house (an
+          // upgrade of an existing member session); a cold or different-house
+          // sign-in starts with no member code (admin can do member things).
+          memberCode: session && session.houseId === houseId ? session.memberCode : null,
+          adminCode: adminCodeInput,
+        };
+        saveSession(next);
+        setSession(next);
+        setAdminCode(adminCodeInput);
         setHouse(state);
       });
 
@@ -429,6 +460,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setCurrentMember: setCurrentMemberId,
       createHouse,
       joinHouse,
+      becomeAdmin,
       addMember,
       softRemoveMember,
       setPresence,
