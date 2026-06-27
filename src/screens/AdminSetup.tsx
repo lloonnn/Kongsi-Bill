@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useApp } from '../store';
 import { Frame, ProgressRow, ScreenNav, TopBar } from '../ui';
+import { copyText } from '../clipboard';
 import type { AvatarTone } from '../types';
 
 const TONES: AvatarTone[] = ['accent', 'alt2', 'alt3'];
@@ -32,9 +33,40 @@ export function AdminSetup() {
     admin_code: string;
   } | null>(null);
 
-  const flash = (id: string) => {
+  // Join link shared on the final step (matches what's rendered there).
+  const joinLink = created
+    ? `kongsibill.pages.dev/join?house=${created.house_id}&code=${created.member_code}`
+    : '';
+
+  const markCopied = (id: string) => {
     setCopied(id);
     setTimeout(() => setCopied((c) => (c === id ? null : c)), 1200);
+  };
+
+  const flash = async (id: string, text: string) => {
+    const ok = await copyText(text);
+    if (!ok) return; // don't claim success if the clipboard write failed
+    markCopied(id);
+  };
+
+  // Download the admin key as a small text file so it can't be lost.
+  const downloadBackup = () => {
+    if (!created) return;
+    const body =
+      `Kongsi Bill — admin backup\n\n` +
+      `House: ${houseName}\n` +
+      `House ID: ${created.house_id}\n` +
+      `Join code: ${created.member_code}\n` +
+      `Admin key (keep private): ${created.admin_code}\n`;
+    const url = URL.createObjectURL(new Blob([body], { type: 'text/plain' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `kongsi-bill-${created.house_id}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    markCopied('dl');
   };
 
   const addToList = () => {
@@ -124,7 +156,10 @@ export function AdminSetup() {
               <div className="code-zone-label">1 · Share this — the join code</div>
               <div className="code-with-copy">
                 <span className="code-zone-value">{created?.member_code ?? '…'}</span>
-                <button className="copy-btn" onClick={() => flash('code')}>
+                <button
+                  className="copy-btn"
+                  onClick={() => flash('code', created?.member_code ?? '')}
+                >
                   {copied === 'code' ? '✓ Copied' : 'Copy'}
                 </button>
               </div>
@@ -166,10 +201,13 @@ export function AdminSetup() {
             </p>
 
             <div className="action-row">
-              <button className="action-btn" onClick={() => flash('copy')}>
+              <button
+                className="action-btn"
+                onClick={() => flash('copy', created?.admin_code ?? '')}
+              >
                 {copied === 'copy' ? '✓ Copied' : '📋 Copy admin key'}
               </button>
-              <button className="action-btn" onClick={() => flash('dl')}>
+              <button className="action-btn" onClick={downloadBackup}>
                 {copied === 'dl' ? '✓ Downloaded' : '⬇ Download backup'}
               </button>
             </div>
@@ -274,7 +312,7 @@ export function AdminSetup() {
                   kongsibill.pages.dev/join?house={created?.house_id ?? '…'}&amp;code=
                   {created?.member_code ?? '…'}
                 </span>
-                <button className="copy-btn" onClick={() => flash('link')}>
+                <button className="copy-btn" onClick={() => flash('link', joinLink)}>
                   {copied === 'link' ? '✓' : 'Copy'}
                 </button>
               </div>
@@ -287,7 +325,10 @@ export function AdminSetup() {
               <div className="code-zone-label">No link? — the join code</div>
               <div className="code-with-copy">
                 <span className="code-zone-value">{created?.member_code ?? '…'}</span>
-                <button className="copy-btn" onClick={() => flash('code')}>
+                <button
+                  className="copy-btn"
+                  onClick={() => flash('code', created?.member_code ?? '')}
+                >
                   {copied === 'code' ? '✓ Copied' : 'Copy'}
                 </button>
               </div>

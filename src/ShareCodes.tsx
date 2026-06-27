@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useApp } from './store';
+import { copyText } from './clipboard';
 
 /**
  * Share card — copy the join link or the join code to invite another
@@ -11,7 +12,9 @@ export function ShareCodes({ title = 'Invite a housemate' }: { title?: string })
 
   const link = `kongsibill.pages.dev/join?house=${house.house_id}&code=${house.member_code}`;
 
-  const flash = (id: string) => {
+  const flash = async (id: string, text: string) => {
+    const ok = await copyText(text);
+    if (!ok) return; // don't claim success if the clipboard write failed
     setCopied(id);
     setTimeout(() => setCopied((c) => (c === id ? null : c)), 1200);
   };
@@ -24,7 +27,7 @@ export function ShareCodes({ title = 'Invite a housemate' }: { title?: string })
         <div className="code-zone-label">Join link</div>
         <div className="link-zone" style={{ marginTop: 8, background: '#fff' }}>
           <span className="link-text">{link}</span>
-          <button className="copy-btn" onClick={() => flash('link')}>
+          <button className="copy-btn" onClick={() => flash('link', link)}>
             {copied === 'link' ? '✓' : 'Copy'}
           </button>
         </div>
@@ -34,7 +37,7 @@ export function ShareCodes({ title = 'Invite a housemate' }: { title?: string })
         <div className="code-zone-label">Or the join code</div>
         <div className="code-with-copy">
           <span className="code-zone-value">{house.member_code}</span>
-          <button className="copy-btn" onClick={() => flash('code')}>
+          <button className="copy-btn" onClick={() => flash('code', house.member_code)}>
             {copied === 'code' ? '✓ Copied' : 'Copy'}
           </button>
         </div>
