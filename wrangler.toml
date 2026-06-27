@@ -1,6 +1,14 @@
-name = "kongsi-bill-api"
+name = "kongsi-bill"
 main = "worker/index.ts"
 compatibility_date = "2026-06-26"
+
+# Static assets — the Worker serves the Vite build output (single origin with
+# the API). not_found_handling = "single-page-application" makes unmatched
+# paths fall back to index.html so client-side React routes resolve.
+[assets]
+directory = "./dist/"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
 
 [[d1_databases]]
 binding = "DB"

@@ -28,6 +28,9 @@ interface Env {
   // undefined in some local dev setups where the binding isn't simulated, so
   // every call site must guard with `if (env.RATE_LIMITER)`.
   RATE_LIMITER?: RateLimit;
+  // Static assets binding ([assets] in wrangler.toml) — serves the Vite build
+  // output (./dist) and the SPA fallback for every non-API request.
+  ASSETS: Fetcher;
 }
 
 // ---------------------------------------------------------------------------
@@ -210,13 +213,27 @@ function str(v: unknown): string {
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    if (request.method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: CORS_HEADERS });
+    const url = new URL(request.url);
+    const allSeg = url.pathname.split('/').filter(Boolean);
+    const method = request.method;
+
+    // Single-origin split: the API lives under the /api prefix; every other
+    // path (HTML/JS/CSS and the SPA fallback) is served from the static assets
+    // binding by the same Worker. The /api namespace guarantees API paths can
+    // never collide with client-side React routes. This must come before any
+    // API handling — including the OPTIONS/CORS preflight, which only concerns
+    // API calls.
+    if (allSeg[0] !== 'api') {
+      return env.ASSETS.fetch(request);
     }
 
-    const url = new URL(request.url);
-    const seg = url.pathname.split('/').filter(Boolean);
-    const method = request.method;
+    // Strip the /api prefix; the remainder routes exactly as before
+    // (/house, /house/:id, /house/:id/member, ...).
+    const seg = allSeg.slice(1);
+
+    if (method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers: CORS_HEADERS });
+    }
 
     // Parse the body once up front (writes need it; admin auth may read it).
     let body: AnyBody = null;
@@ -658,4 +675,10 @@ interface D1Database {
 // @cloudflare/workers-types once that package is installed and referenced.
 interface RateLimit {
   limit(options: { key: string }): Promise<{ success: boolean }>;
+}
+
+// Static assets binding (the `[assets]` block in wrangler.toml). Replace with
+// the `Fetcher` type from @cloudflare/workers-types once installed.
+interface Fetcher {
+  fetch(request: Request): Promise<Response>;
 }

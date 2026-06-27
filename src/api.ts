@@ -12,9 +12,11 @@
 import type { Bill, BillStatus, DateRange, HouseState, Member } from './types';
 
 /**
- * Base URL of the deployed Worker, e.g. https://kongsi-bill-api.<acct>.workers.dev
- * Configure via VITE_API_BASE. Empty string → same-origin relative requests
- * (useful if the Worker is routed under the Pages domain).
+ * Base URL of the API. The frontend and the Worker are now served from the same
+ * origin (one Worker serves both static assets and the API), so this defaults to
+ * '' → same-origin relative requests like `/api/house/...`. VITE_API_BASE is optional
+ * and only needs setting to point at a different origin (e.g. a remote Worker
+ * while running the Vite dev server locally).
  */
 const API_BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/$/, '');
 
@@ -86,48 +88,48 @@ export interface BillInput {
 // Endpoints.
 // ---------------------------------------------------------------------------
 
-/** POST /house — create a house. No auth. Returns the admin code (once). */
+/** POST /api/house — create a house. No auth. Returns the admin code (once). */
 export function createHouse(display_name: string): Promise<CreatedHouse> {
-  return request<CreatedHouse>('/house', { method: 'POST', body: { display_name } });
+  return request<CreatedHouse>('/api/house', { method: 'POST', body: { display_name } });
 }
 
-/** GET /house/:id — full house state (auth: member or admin code). */
+/** GET /api/house/:id — full house state (auth: member or admin code). */
 export function getHouseState(
   houseId: string,
   codes: { memberCode?: string | null; adminCode?: string | null }
 ): Promise<HouseState> {
-  return request<HouseState>(`/house/${encodeURIComponent(houseId)}`, {
+  return request<HouseState>(`/api/house/${encodeURIComponent(houseId)}`, {
     memberCode: codes.memberCode,
     adminCode: codes.adminCode,
   });
 }
 
-/** POST /house/:id/member — add a member (auth: admin). */
+/** POST /api/house/:id/member — add a member (auth: admin). */
 export function addMember(
   houseId: string,
   name: string,
   adminCode: string
 ): Promise<Pick<Member, 'member_id' | 'name' | 'active' | 'days_confirmed'>> {
-  return request(`/house/${encodeURIComponent(houseId)}/member`, {
+  return request(`/api/house/${encodeURIComponent(houseId)}/member`, {
     method: 'POST',
     body: { name },
     adminCode,
   });
 }
 
-/** POST /house/:id/member/:memberId/remove — soft-remove (auth: admin). */
+/** POST /api/house/:id/member/:memberId/remove — soft-remove (auth: admin). */
 export function removeMember(
   houseId: string,
   memberId: string,
   adminCode: string
 ): Promise<{ member_id: string; active: boolean }> {
   return request(
-    `/house/${encodeURIComponent(houseId)}/member/${encodeURIComponent(memberId)}/remove`,
+    `/api/house/${encodeURIComponent(houseId)}/member/${encodeURIComponent(memberId)}/remove`,
     { method: 'POST', adminCode }
   );
 }
 
-/** PUT /house/:id/member/:memberId/presence — replace presence (auth: member). */
+/** PUT /api/house/:id/member/:memberId/presence — replace presence (auth: member). */
 export function setPresence(
   houseId: string,
   memberId: string,
@@ -135,50 +137,50 @@ export function setPresence(
   codes: { memberCode?: string | null; adminCode?: string | null }
 ): Promise<{ member_id: string; presence: DateRange[] }> {
   return request(
-    `/house/${encodeURIComponent(houseId)}/member/${encodeURIComponent(memberId)}/presence`,
+    `/api/house/${encodeURIComponent(houseId)}/member/${encodeURIComponent(memberId)}/presence`,
     { method: 'PUT', body: { ranges }, memberCode: codes.memberCode, adminCode: codes.adminCode }
   );
 }
 
-/** POST /house/:id/bill — create or update a bill incl. status (auth: admin). */
+/** POST /api/house/:id/bill — create or update a bill incl. status (auth: admin). */
 export function upsertBill(houseId: string, bill: BillInput, adminCode: string): Promise<Bill> {
-  return request(`/house/${encodeURIComponent(houseId)}/bill`, {
+  return request(`/api/house/${encodeURIComponent(houseId)}/bill`, {
     method: 'POST',
     body: bill,
     adminCode,
   });
 }
 
-/** POST /house/:id/member/:memberId/confirm-days — mark days reviewed (auth: member). */
+/** POST /api/house/:id/member/:memberId/confirm-days — mark days reviewed (auth: member). */
 export function confirmDays(
   houseId: string,
   memberId: string,
   codes: { memberCode?: string | null; adminCode?: string | null }
 ): Promise<{ member_id: string; days_confirmed: boolean }> {
   return request(
-    `/house/${encodeURIComponent(houseId)}/member/${encodeURIComponent(memberId)}/confirm-days`,
+    `/api/house/${encodeURIComponent(houseId)}/member/${encodeURIComponent(memberId)}/confirm-days`,
     { method: 'POST', memberCode: codes.memberCode, adminCode: codes.adminCode }
   );
 }
 
-/** POST /house/:id/bill/:billId/remove — delete a bill (auth: admin). */
+/** POST /api/house/:id/bill/:billId/remove — delete a bill (auth: admin). */
 export function deleteBill(
   houseId: string,
   billId: string,
   adminCode: string
 ): Promise<{ bill_id: string; deleted: boolean }> {
   return request(
-    `/house/${encodeURIComponent(houseId)}/bill/${encodeURIComponent(billId)}/remove`,
+    `/api/house/${encodeURIComponent(houseId)}/bill/${encodeURIComponent(billId)}/remove`,
     { method: 'POST', adminCode }
   );
 }
 
-/** POST /house/:id/regenerate-member-code — new member code (auth: admin). */
+/** POST /api/house/:id/regenerate-member-code — new member code (auth: admin). */
 export function regenerateMemberCode(
   houseId: string,
   adminCode: string
 ): Promise<{ member_code: string }> {
-  return request(`/house/${encodeURIComponent(houseId)}/regenerate-member-code`, {
+  return request(`/api/house/${encodeURIComponent(houseId)}/regenerate-member-code`, {
     method: 'POST',
     adminCode,
   });
