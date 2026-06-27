@@ -10,7 +10,9 @@ export function ShareCodes({ title = 'Invite a housemate' }: { title?: string })
   const { house } = useApp();
   const [copied, setCopied] = useState<string | null>(null);
 
-  const link = `kongsibill.pages.dev/join?house=${house.house_id}&code=${house.member_code}`;
+  // Same-origin join link — built from the current location so it always points
+  // at wherever the app is served, never a hardcoded domain.
+  const link = `${window.location.origin}/join?house=${house.house_id}&code=${house.member_code}`;
 
   const flash = async (id: string, text: string) => {
     const ok = await copyText(text);

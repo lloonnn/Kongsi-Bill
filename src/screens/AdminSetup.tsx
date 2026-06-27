@@ -33,9 +33,11 @@ export function AdminSetup() {
     admin_code: string;
   } | null>(null);
 
-  // Join link shared on the final step (matches what's rendered there).
+  // Join link shared on the final step (matches what's rendered there). Built
+  // same-origin from the current location so it always points at wherever the
+  // app is actually served — never a hardcoded domain.
   const joinLink = created
-    ? `kongsibill.pages.dev/join?house=${created.house_id}&code=${created.member_code}`
+    ? `${window.location.origin}/join?house=${created.house_id}&code=${created.member_code}`
     : '';
 
   const markCopied = (id: string) => {
@@ -308,10 +310,7 @@ export function AdminSetup() {
                 className="link-zone"
                 style={{ marginTop: 8, background: '#fff' }}
               >
-                <span className="link-text">
-                  kongsibill.pages.dev/join?house={created?.house_id ?? '…'}&amp;code=
-                  {created?.member_code ?? '…'}
-                </span>
+                <span className="link-text">{joinLink || '…'}</span>
                 <button className="copy-btn" onClick={() => flash('link', joinLink)}>
                   {copied === 'link' ? '✓' : 'Copy'}
                 </button>
