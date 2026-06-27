@@ -71,6 +71,22 @@ function saveSession(s: Session | null) {
   }
 }
 
+/**
+ * True when the app was opened via the invite link (the `/join` path, which
+ * carries ?house= & ?code=). The stack router has no URL mapping, so without
+ * this a cold device would land on the Hub and never reach the join screen —
+ * the join screen itself then reads the query params and joins (see MemberJoin).
+ */
+function isJoinLink(): boolean {
+  try {
+    if (window.location.pathname.replace(/\/+$/, '').endsWith('/join')) return true;
+    const p = new URLSearchParams(window.location.search);
+    return !!p.get('house') && !!p.get('code');
+  } catch {
+    return false;
+  }
+}
+
 interface AppContextValue {
   house: HouseState;
   /** Admin code if the current user holds it (only the admin does). */
@@ -117,7 +133,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // the offline demo seed gets the demo admin code.
     return s ? s.adminCode : initialAdminCode;
   });
-  const [stack, setStack] = useState<Route[]>([{ name: 'hub' }]);
+  const [stack, setStack] = useState<Route[]>(() =>
+    isJoinLink() ? [{ name: 'member-join' }] : [{ name: 'hub' }]
+  );
   const [currentMemberId, setCurrentMemberId] = useState<string | null>('m-bob');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);

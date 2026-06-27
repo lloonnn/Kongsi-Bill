@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../store';
 import { Avatar, Frame, ProgressRow, ScreenNav, TopBar } from '../ui';
 import { Calendar } from '../Calendar';
@@ -12,6 +12,18 @@ function normalizeCode(s: string): string {
 }
 
 /**
+ * Read the invite (house id + member code) from the join link's query string,
+ * if present. This is the source of truth on a cold device — the link works on
+ * any device because the house + code travel in the URL, not in local state.
+ */
+function readInvite(): { house: string; code: string } | null {
+  const params = new URLSearchParams(window.location.search);
+  const house = params.get('house');
+  const code = params.get('code');
+  return house && code ? { house, code } : null;
+}
+
+/**
  * Housemate join flow.
  *
  * Entry from the in-app "Join a house" button starts at the code step (they
@@ -20,10 +32,40 @@ function normalizeCode(s: string): string {
  *   code → welcome → recognize-or-name → calendar
  */
 export function MemberJoin() {
-  const { house, go, setCurrentMember, addMember, setPresence, confirmDays, error } = useApp();
+  const { house, go, setCurrentMember, addMember, setPresence, confirmDays, joinHouse, error } =
+    useApp();
+  // Read the invite once on first render so it stays stable across re-renders.
+  const invite = useRef(readInvite()).current;
   const [step, setStep] = useState<Step>('code');
-  const [codeInput, setCodeInput] = useState('');
+  // Pre-fill the code from the link so a failed auto-join leaves it ready to retry.
+  const [codeInput, setCodeInput] = useState(invite?.code ?? '');
   const [codeError, setCodeError] = useState(false);
+
+  // Invite-link arrival (cold device): join straight from the URL params, with
+  // no dependence on any pre-existing local state, then drop into the flow —
+  // skipping the manual code step. On failure we fall back to the code step
+  // (the code is already pre-filled) so the user can retry by hand.
+  useEffect(() => {
+    if (!invite) return;
+    let cancelled = false;
+    joinHouse(invite.house, invite.code)
+      .then(() => {
+        if (!cancelled) setStep('welcome');
+      })
+      .catch(() => {
+        if (!cancelled) setCodeError(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // Run once on mount; `invite` is read-once and stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // While the link-based join is in flight (invite present, still on the code
+  // step, no failure yet) show a "Joining…" placeholder instead of the manual
+  // code form — the code came from the URL, so there's nothing to type.
+  const joiningFromLink = !!invite && step === 'code' && !codeError;
   const [activeId, setActiveId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState('Divya');
   const [presenceDraft, setPresenceDraft] = useState<DateRange[] | null>(null);
@@ -88,7 +130,15 @@ export function MemberJoin() {
       <div className="screen">
         <ScreenNav onBack={step === 'code' ? undefined : prev[step]} />
 
-        {step === 'code' && (
+        {step === 'code' && joiningFromLink && (
+          <div className="card">
+            <div className="eyebrow-pill">🔗 Joining…</div>
+            <h1 className="title sm">Opening your house…</h1>
+            <p className="sub">Joining from your invite link — one moment.</p>
+          </div>
+        )}
+
+        {step === 'code' && !joiningFromLink && (
           <div className="card">
             <div className="eyebrow-pill">🔗 Join a house</div>
             <h1 className="title sm">Enter your join code</h1>
