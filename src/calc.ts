@@ -1,4 +1,4 @@
-import type { Bill, Member, RoundingConfig } from './types';
+import type { Bill, DateRange, Member, RoundingConfig } from './types';
 
 // NOTE: this file keeps the prototype's split + rounding algorithm exactly —
 // day-weighting, largest-remainder cent allocation, reconciliation messages.
@@ -35,11 +35,37 @@ function overlapDays(start: string, end: string, lo: string, hi: string): number
 }
 
 /**
+ * Merge overlapping and adjacent presence ranges into a minimal, sorted,
+ * non-overlapping set so no day is counted twice (README §3 step 2). Ranges are
+ * already merged in the Worker on save, but the audit calculation merges again
+ * here so the in-browser maths is correct on its own, even if it is ever handed
+ * unmerged input. Pure — does not mutate the caller's array.
+ */
+function mergeRanges(ranges: DateRange[]): DateRange[] {
+  if (ranges.length <= 1) return ranges.slice();
+  const sorted = [...ranges].sort((a, b) =>
+    a.start < b.start ? -1 : a.start > b.start ? 1 : 0
+  );
+  const out: DateRange[] = [{ ...sorted[0] }];
+  for (let i = 1; i < sorted.length; i++) {
+    const cur = sorted[i];
+    const last = out[out.length - 1];
+    // Overlapping or touching (cur starts on or before the day after last ends).
+    if (cur.start <= nextDay(last.end)) {
+      if (cur.end > last.end) last.end = cur.end;
+    } else {
+      out.push({ ...cur });
+    }
+  }
+  return out;
+}
+
+/**
  * Home (present) days a member counts for a bill.
  *
  * Presence is stored as PRESENT ranges. A member with recorded ranges counts
- * the days of those ranges that fall inside the bill period (ranges are merged
- * on save, so they never overlap and summing is safe). A member with NO
+ * the days of those ranges that fall inside the bill period; ranges are merged
+ * first (see mergeRanges) so overlaps never double-count. A member with NO
  * recorded presence at all is treated as "present the whole period" — the
  * blueprint's default-to-present rule (§6.6) — so an un-marked housemate still
  * gets a fair share rather than silently dropping to zero.
@@ -47,7 +73,7 @@ function overlapDays(start: string, end: string, lo: string, hi: string): number
 export function homeDaysInPeriod(member: Member, bill: Bill): number {
   if (member.presence.length === 0) return periodLength(bill);
   let days = 0;
-  for (const r of member.presence) {
+  for (const r of mergeRanges(member.presence)) {
     days += overlapDays(r.start, r.end, bill.period_start, bill.period_end);
   }
   return Math.min(days, periodLength(bill));
@@ -195,15 +221,37 @@ function reconcile(
     };
   }
 
-  // With rounding off the cents always sum exactly to the bill amount.
+  // Independent tolerance check (blueprint §line 93): the displayed shares must
+  // reconcile to the bill amount, not just be assumed to by construction.
   if (!rounding.enabled) {
+    // No rounding: the cents must sum to the bill amount within a half-cent.
+    if (Math.abs(remainder) > 0.005) {
+      return {
+        status: 'warn',
+        message: `Shares don’t add up — off by ${money(Math.abs(remainder))}`,
+        detail: `They should total ${money(bill.amount)} but the parts sum to ${money(
+          bill.amount - remainder
+        )}. That’s a calculation error — please report it.`,
+      };
+    }
     return {
       status: 'ok',
       message: `Reconciled — shares add up to ${money(bill.amount)}`,
     };
   }
 
-  // With rounding on, a small remainder is expected and stated plainly.
+  // With rounding on, a remainder is expected — but only up to one increment
+  // per participant. Anything larger means the rounding itself misbehaved.
+  const maxRemainder = rounding.increment * shares.length + 0.005;
+  if (Math.abs(remainder) > maxRemainder) {
+    return {
+      status: 'warn',
+      message: `Rounding remainder is larger than expected (${money(Math.abs(remainder))})`,
+      detail: `Rounding to ${money(rounding.increment)} should leave at most ${money(
+        rounding.increment * shares.length
+      )} across ${shares.length} ${shares.length === 1 ? 'person' : 'people'}. Please report it.`,
+    };
+  }
   return {
     status: 'ok',
     message: `Reconciled — shares add up to ${money(bill.amount - remainder)}`,
@@ -338,9 +386,28 @@ function reconcileCombined(
     };
   }
   if (!rounding.enabled) {
+    if (Math.abs(remainder) > 0.005) {
+      return {
+        status: 'warn',
+        message: `Combined shares don’t add up — off by ${money(Math.abs(remainder))}`,
+        detail: `They should total ${money(grandTotal)} but the parts sum to ${money(
+          grandTotal - remainder
+        )}. That’s a calculation error — please report it.`,
+      };
+    }
     return {
       status: 'ok',
       message: `Reconciled — combined shares add up to ${money(grandTotal)}`,
+    };
+  }
+  const maxRemainder = rounding.increment * participantCount + 0.005;
+  if (Math.abs(remainder) > maxRemainder) {
+    return {
+      status: 'warn',
+      message: `Rounding remainder is larger than expected (${money(Math.abs(remainder))})`,
+      detail: `Rounding to ${money(rounding.increment)} should leave at most ${money(
+        rounding.increment * participantCount
+      )} across ${participantCount} ${participantCount === 1 ? 'person' : 'people'}. Please report it.`,
     };
   }
   return {
