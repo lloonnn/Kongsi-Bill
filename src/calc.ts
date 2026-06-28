@@ -84,6 +84,22 @@ export function isInPeriod(key: string, bill: Bill): boolean {
   return key >= bill.period_start && key <= bill.period_end;
 }
 
+/**
+ * Whether a member takes a share of a bill: were they PRESENT for at least one
+ * day of the bill's period? This is presence-based, NOT the current `active`
+ * flag — so a soft-removed member still shares bills from while they lived
+ * here, and the live `active` flag never retroactively rewrites an old split.
+ *
+ * Inclusion is exactly "presence overlaps [period_start, period_end]", reusing
+ * homeDaysInPeriod so the default-to-present rule is honoured: a member with NO
+ * recorded presence counts as present the whole period (homeDaysInPeriod > 0),
+ * so an un-marked housemate on a bill from before they were removed still keeps
+ * a share rather than silently dropping out.
+ */
+export function wasPresentInPeriod(member: Member, bill: Bill): boolean {
+  return homeDaysInPeriod(member, bill) > 0;
+}
+
 export interface PersonShare {
   member: Member;
   days: number;
@@ -152,7 +168,10 @@ export function calculate(
   members: Member[],
   rounding: RoundingConfig
 ): Calculation {
-  const participants = members.filter((m) => m.active);
+  // Include everyone PRESENT during this bill's period — not just currently
+  // `active` members. A soft-removed housemate keeps their share of bills from
+  // while they lived here; the current active flag never rewrites an old split.
+  const participants = members.filter((m) => wasPresentInPeriod(m, bill));
   const dayCounts = participants.map((m) => homeDaysInPeriod(m, bill));
   const totalDays = dayCounts.reduce((a, b) => a + b, 0);
 
@@ -310,7 +329,10 @@ export function calculateCombined(
   members: Member[],
   rounding: RoundingConfig
 ): CombinedCalculation {
-  const participants = members.filter((m) => m.active);
+  // Include everyone PRESENT in at least one of the combined bills — the same
+  // presence-based rule as calculate(), not the current `active` flag. Members
+  // who missed a given bill's period still get 0 days for it (homeDaysInPeriod).
+  const participants = members.filter((m) => bills.some((b) => wasPresentInPeriod(m, b)));
 
   // Per-bill denominator: sum of every participant's days within that bill.
   const totalDaysByBill = bills.map((b) =>

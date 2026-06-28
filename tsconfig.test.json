@@ -1,0 +1,29 @@
+{
+  // Typecheck for test files only. They run under Node's built-in test runner
+  // (node:test) with TypeScript type-stripping, so they need the `node` types,
+  // not the browser `vite/client` types the app build uses. Standalone (not a
+  // `tsc -b` reference) so the source files it imports aren't double-claimed by
+  // two projects. Run: `tsc -p tsconfig.test.json`.
+  "compilerOptions": {
+    "target": "es2023",
+    "lib": ["ES2023"],
+    "types": ["node"],
+    "skipLibCheck": true,
+
+    /* Bundler mode — matches tsconfig.app.json so the source it imports
+       (extensionless relative imports, .ts extensions) resolves identically. */
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+
+    /* Linting */
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["src/**/*.test.ts"]
+}
