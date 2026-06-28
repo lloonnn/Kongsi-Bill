@@ -7,7 +7,7 @@ import type { RoundingConfig } from '../types';
 /**
  * Finalize the bills — the admin's "wrap up this cycle" screen and the ONLY
  * place fees are calculated. It always combines every OPEN (draft) bill into one
- * total per person (no per-bill confirming, nothing "some can some cannot").
+ * total per person (no per-bill marking paid, nothing "some can some cannot").
  *
  * Two stages only — matching the real flow:
  *   Open   → housemates mark days; admin sees readiness + the combined fees,

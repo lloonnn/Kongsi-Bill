@@ -66,6 +66,7 @@ export const initialHouse: HouseState = {
       period_start: '2026-01-01',
       period_end: '2026-01-31',
       status: 'paid', // settled & closed — already paid the landlord
+      paid_snapshot: null, // pre-0004 paid bill: falls back to live recalc
     },
     {
       bill_id: 'bill-open-elec',
@@ -74,6 +75,7 @@ export const initialHouse: HouseState = {
       period_start: '2026-05-16',
       period_end: '2026-06-15',
       status: 'draft',
+      paid_snapshot: null,
     },
     {
       bill_id: 'bill-open-water',
@@ -82,6 +84,7 @@ export const initialHouse: HouseState = {
       period_start: '2026-06-01',
       period_end: '2026-06-30',
       status: 'draft',
+      paid_snapshot: null,
     },
   ],
 };

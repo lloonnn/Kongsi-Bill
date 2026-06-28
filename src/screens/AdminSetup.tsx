@@ -176,7 +176,7 @@ export function AdminSetup() {
               <div className="code-zone-value">{created?.admin_code ?? '…'}</div>
               <div className="code-zone-hint">
                 Proves you're the one who runs this house. You'll need it to
-                confirm and lock bills, and to add or remove housemates.
+                mark bills paid, and to add or remove housemates.
               </div>
             </div>
 

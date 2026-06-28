@@ -21,10 +21,14 @@ export function AdminDashboard() {
             <h1 className="title sm">This is the bill-payer’s area</h1>
             <p className="sub">
               Managing bills and housemates needs the admin key, which only the
-              bill-payer holds. You can still mark your days and see the splits
-              from your home page.
+              bill-payer holds. If that's you, enter your admin code to take over
+              here. Otherwise you can still mark your days and see the splits from
+              your home page.
             </p>
-            <button className="btn-primary" onClick={() => go({ name: 'member-landing' })}>
+            <button className="btn-primary" onClick={() => go({ name: 'admin-manage' })}>
+              Enter admin code
+            </button>
+            <button className="btn-secondary" onClick={() => go({ name: 'member-landing' })}>
               Go to my home page
             </button>
             <button className="btn-secondary" onClick={() => go({ name: 'hub' })}>
@@ -36,7 +40,7 @@ export function AdminDashboard() {
     );
   }
 
-  // One Bill screen handles everything (split, edit, confirm/lock, delete).
+  // One Bill screen handles everything (split, edit, mark paid, delete).
   const openBill = (b: Bill) => go({ name: 'admin-bill-detail', billId: b.bill_id });
 
   return (

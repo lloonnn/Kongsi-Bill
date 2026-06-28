@@ -1,15 +1,7 @@
 import { useApp } from './store';
 import { StatusPill } from './ui';
-import {
-  billIcon,
-  billLabel,
-  calculate,
-  formatPeriod,
-  money,
-  NO_ROUNDING,
-  type Calculation,
-} from './calc';
-import type { Bill } from './types';
+import { billIcon, billLabel, calculate, formatPeriod, money, NO_ROUNDING } from './calc';
+import type { Bill, PaidSnapshotEntry } from './types';
 
 /**
  * Combined overview matrix: every bill (rows) × every housemate (columns),
@@ -18,6 +10,11 @@ import type { Bill } from './types';
  *
  * `bills` scopes the table to a subset (e.g. one combined month); defaults to
  * all house bills. `onOpenBill` (admin only) makes the bill name tappable.
+ *
+ * Paid bills render their FROZEN split (bill.paid_snapshot, migration 0004) so a
+ * later soft-removed member can't retroactively shift a settled split. Draft
+ * bills — and any paid bill with no snapshot (settled before 0004) — recalculate
+ * live, unchanged.
  */
 export function BillOverview({
   bills: billsProp,
@@ -27,23 +24,48 @@ export function BillOverview({
   onOpenBill?: (billId: string) => void;
 }) {
   const { house } = useApp();
-  const members = house.members.filter((m) => m.active);
   const bills = (billsProp ?? house.bills)
     .slice()
     .sort((a, b) => (a.period_start < b.period_start ? 1 : -1));
 
-  const rows = bills.map((bill) => ({
-    bill,
-    calc: calculate(bill, house.members, NO_ROUNDING),
-  }));
+  // Per-bill split entries: the stored snapshot for a paid bill that has one,
+  // otherwise a live recalc (draft, or pre-0004 paid bill). Both paths produce
+  // the same { member_id, name, days, amount } shape.
+  const entriesFor = (bill: Bill): PaidSnapshotEntry[] => {
+    if (bill.status === 'paid' && bill.paid_snapshot != null) return bill.paid_snapshot;
+    return calculate(bill, house.members, NO_ROUNDING).shares.map((s) => ({
+      member_id: s.member.member_id,
+      name: s.member.name,
+      days: s.days,
+      amount: s.amount,
+    }));
+  };
 
-  const shareFor = (calc: Calculation, memberId: string) =>
-    calc.shares.find((s) => s.member.member_id === memberId);
+  const rows = bills.map((bill) => {
+    const entries = entriesFor(bill);
+    return { bill, byMember: new Map(entries.map((e) => [e.member_id, e])) };
+  });
+
+  // Columns = currently-active members first (stable order), then any member who
+  // appears only in a snapshot (e.g. soft-removed after settling), so a frozen
+  // bill still shows everyone it was split between — with their captured name.
+  const columns: { member_id: string; name: string }[] = house.members
+    .filter((m) => m.active)
+    .map((m) => ({ member_id: m.member_id, name: m.name }));
+  const seen = new Set(columns.map((c) => c.member_id));
+  for (const { byMember } of rows) {
+    for (const e of byMember.values()) {
+      if (!seen.has(e.member_id)) {
+        seen.add(e.member_id);
+        columns.push({ member_id: e.member_id, name: e.name });
+      }
+    }
+  }
 
   const memberTotal = (memberId: string) =>
-    rows.reduce((sum, { calc }) => {
-      const s = shareFor(calc, memberId);
-      return sum + (s && s.days > 0 ? s.amount : 0);
+    rows.reduce((sum, { byMember }) => {
+      const e = byMember.get(memberId);
+      return sum + (e && e.days > 0 ? e.amount : 0);
     }, 0);
 
   const grandTotal = bills.reduce((s, b) => s + b.amount, 0);
@@ -54,14 +76,14 @@ export function BillOverview({
         <thead>
           <tr>
             <th className="bill-head">Bill</th>
-            {members.map((m) => (
-              <th key={m.member_id}>{m.name}</th>
+            {columns.map((c) => (
+              <th key={c.member_id}>{c.name}</th>
             ))}
             <th className="col-total">Total</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map(({ bill, calc }) => (
+          {rows.map(({ bill, byMember }) => (
             <tr key={bill.bill_id}>
               <td className="bill-cell">
                 {onOpenBill ? (
@@ -78,15 +100,15 @@ export function BillOverview({
                   <StatusPill status={bill.status} />
                 </div>
               </td>
-              {members.map((m) => {
-                const s = shareFor(calc, m.member_id);
-                const has = s && s.days > 0;
+              {columns.map((c) => {
+                const e = byMember.get(c.member_id);
+                const has = e && e.days > 0;
                 return (
-                  <td key={m.member_id} className={has ? 'amt' : 'muted-cell'}>
+                  <td key={c.member_id} className={has ? 'amt' : 'muted-cell'}>
                     {has ? (
                       <>
-                        {money(s!.amount)}
-                        <div className="bill-period">{s!.days}d home</div>
+                        {money(e!.amount)}
+                        <div className="bill-period">{e!.days}d home</div>
                       </>
                     ) : (
                       '—'
@@ -101,8 +123,8 @@ export function BillOverview({
         <tfoot>
           <tr>
             <td className="bill-cell">Each pays</td>
-            {members.map((m) => (
-              <td key={m.member_id}>{money(memberTotal(m.member_id))}</td>
+            {columns.map((c) => (
+              <td key={c.member_id}>{money(memberTotal(c.member_id))}</td>
             ))}
             <td className="col-total">{money(grandTotal)}</td>
           </tr>

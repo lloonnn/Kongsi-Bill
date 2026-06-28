@@ -182,7 +182,7 @@ function ActiveBills({ member }: { member: Member }) {
           <span>✓</span>
           <div>
             You’ve marked your days correct — the admin can see you’re done. Edit
-            any day above any time before a bill is confirmed (you’ll just mark
+            any day above any time before a bill is paid (you’ll just mark
             them correct again).
           </div>
         </div>

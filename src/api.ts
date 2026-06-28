@@ -9,7 +9,7 @@
 // The admin code can do anything a member can, so it is also accepted on member
 // endpoints; callers pass whichever code they hold.
 
-import type { Bill, BillStatus, DateRange, HouseState, Member } from './types';
+import type { Bill, BillStatus, DateRange, HouseState, Member, PaidSnapshotEntry } from './types';
 
 /**
  * Base URL of the API. The frontend and the Worker are now served from the same
@@ -82,6 +82,12 @@ export interface BillInput {
   period_start: string;
   period_end: string;
   status?: BillStatus;
+  /**
+   * Frozen split, sent only when settling a bill (status → 'paid'). Computed in
+   * the browser (calc.ts) and stored verbatim by the Worker — `null` (or omitted)
+   * for draft writes, which clears any stale snapshot.
+   */
+  paid_snapshot?: PaidSnapshotEntry[] | null;
 }
 
 // ---------------------------------------------------------------------------

@@ -48,6 +48,23 @@ export interface Member {
  */
 export type BillStatus = 'draft' | 'confirmed' | 'paid';
 
+/**
+ * One person's frozen share of a bill, captured when the bill is marked paid.
+ * `name` is captured alongside the id so a later-renamed or soft-removed member
+ * still displays correctly in history. `days`/`amount` come straight from
+ * calc.ts's PersonShare output (NO_ROUNDING) — never recomputed for a paid bill.
+ */
+export interface PaidSnapshotEntry {
+  member_id: string;
+  name: string;
+  days: number;
+  /** Final per-bill amount (NO_ROUNDING cent-allocation), as displayed. */
+  amount: number;
+}
+
+/** The full set of per-person shares frozen at the moment a bill is settled. */
+export type PaidSnapshot = PaidSnapshotEntry[];
+
 export interface Bill {
   bill_id: string;
   /** Single free-text label, e.g. "Electricity", "Water", or anything typed. */
@@ -57,6 +74,13 @@ export interface Bill {
   period_start: string;
   period_end: string;
   status: BillStatus;
+  /**
+   * The split frozen when the bill became `paid` (migration 0004). Paid bills
+   * render this directly instead of recalculating, so soft-removing a member
+   * can't retroactively change a settled split. `null` for draft bills, and for
+   * bills paid before migration 0004 (which fall back to a live recalc).
+   */
+  paid_snapshot: PaidSnapshotEntry[] | null;
 }
 
 export interface RoundingConfig {

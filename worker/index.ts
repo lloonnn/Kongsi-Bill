@@ -390,6 +390,7 @@ interface BillRow {
   period_start: string;
   period_end: string;
   status: string;
+  paid_snapshot: string | null; // JSON text computed by the browser, or NULL
 }
 
 async function readHouse(env: Env, house: HouseRow): Promise<Response> {
@@ -416,7 +417,7 @@ async function readHouse(env: Env, house: HouseRow): Promise<Response> {
 
   const bills = (
     await env.DB.prepare(
-      'SELECT bill_id, utility_label, amount, period_start, period_end, status FROM bills WHERE house_id = ? ORDER BY period_end DESC'
+      'SELECT bill_id, utility_label, amount, period_start, period_end, status, paid_snapshot FROM bills WHERE house_id = ? ORDER BY period_end DESC'
     )
       .bind(house.house_id)
       .all<BillRow>()
@@ -441,7 +442,17 @@ async function readHouse(env: Env, house: HouseRow): Promise<Response> {
       days_confirmed: m.days_confirmed === 1, // "my days are correct" readiness flag
       presence: presenceByMember.get(m.member_id) ?? [],
     })),
-    bills,
+    // paid_snapshot is stored as JSON text (the browser's computed split); parse
+    // it back to an array for the client, or null if the bill has no snapshot.
+    bills: bills.map((b) => ({
+      bill_id: b.bill_id,
+      utility_label: b.utility_label,
+      amount: b.amount,
+      period_start: b.period_start,
+      period_end: b.period_end,
+      status: b.status,
+      paid_snapshot: b.paid_snapshot ? JSON.parse(b.paid_snapshot) : null,
+    })),
   });
 }
 
@@ -592,6 +603,17 @@ async function upsertBill(env: Env, houseId: string, body: AnyBody): Promise<Res
     return err(400, "status must be 'draft', 'confirmed', or 'paid'");
   }
 
+  // paid_snapshot is the frozen split the BROWSER computed (src/calc.ts) when a
+  // bill is settled — the Worker only PERSISTS it (no maths, §10.1). We validate
+  // basic shape only (an array, or null/omitted to clear it) and store it as JSON
+  // text; the contents are the client's computed output and are not re-checked.
+  const rawSnapshot = body?.paid_snapshot;
+  if (rawSnapshot !== undefined && rawSnapshot !== null && !Array.isArray(rawSnapshot)) {
+    return err(400, 'paid_snapshot must be an array or null');
+  }
+  const snapshot = Array.isArray(rawSnapshot) ? rawSnapshot : null;
+  const snapshotText = snapshot ? JSON.stringify(snapshot) : null;
+
   const billId = typeof body?.bill_id === 'string' ? body.bill_id : null;
 
   if (billId) {
@@ -603,22 +625,22 @@ async function upsertBill(env: Env, houseId: string, body: AnyBody): Promise<Res
     if (!existing) return err(404, 'Bill not found');
 
     await env.DB.prepare(
-      'UPDATE bills SET utility_label = ?, amount = ?, period_start = ?, period_end = ?, status = ? WHERE bill_id = ? AND house_id = ?'
+      'UPDATE bills SET utility_label = ?, amount = ?, period_start = ?, period_end = ?, status = ?, paid_snapshot = ? WHERE bill_id = ? AND house_id = ?'
     )
-      .bind(utility_label, amount, period_start, period_end, status, billId, houseId)
+      .bind(utility_label, amount, period_start, period_end, status, snapshotText, billId, houseId)
       .run();
 
-    return json({ bill_id: billId, utility_label, amount, period_start, period_end, status });
+    return json({ bill_id: billId, utility_label, amount, period_start, period_end, status, paid_snapshot: snapshot });
   }
 
   const bill_id = randomId();
   await env.DB.prepare(
-    'INSERT INTO bills (bill_id, house_id, utility_label, amount, period_start, period_end, status, schema_version) VALUES (?, ?, ?, ?, ?, ?, ?, 1)'
+    'INSERT INTO bills (bill_id, house_id, utility_label, amount, period_start, period_end, status, paid_snapshot, schema_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)'
   )
-    .bind(bill_id, houseId, utility_label, amount, period_start, period_end, status)
+    .bind(bill_id, houseId, utility_label, amount, period_start, period_end, status, snapshotText)
     .run();
 
-  return json({ bill_id, utility_label, amount, period_start, period_end, status }, 201);
+  return json({ bill_id, utility_label, amount, period_start, period_end, status, paid_snapshot: snapshot }, 201);
 }
 
 async function removeBill(env: Env, houseId: string, billId: string): Promise<Response> {

@@ -21,7 +21,7 @@ const dateStyle: CSSProperties = {
  * Add one or more bills in a single sitting. Each added bill is saved (as a
  * draft) immediately and shown in a running preview list below the form, so the
  * admin can keep adding ("Add bill") and remove anything entered wrongly. They
- * are NOT confirmed/locked here — confirming is a separate, deliberate step on
+ * are NOT marked paid here — marking paid is a separate, deliberate step on
  * each bill's own page. Extrapolated screen.
  */
 export function AdminAddBill() {
@@ -78,7 +78,7 @@ export function AdminAddBill() {
           <h1 className="title sm">{added.length ? 'Add another bill' : "What's this bill?"}</h1>
           <p className="sub">
             Enter the total and the period it covers. Add as many as you like —
-            each is saved as a draft you can review and confirm later.
+            each is saved as a draft you can review and mark paid later.
           </p>
 
           <span className="field-label">Type of bill</span>
@@ -174,7 +174,7 @@ export function AdminAddBill() {
 
             <p className="muted-note" style={{ marginTop: 12 }}>
               These are saved as <b>drafts</b>. Open a bill from the house to
-              review the split and confirm (lock) it — that’s a separate step, so
+              review the split and mark it paid — that’s a separate step, so
               nothing locks by accident here.
             </p>
             <button className="btn-primary" onClick={() => go({ name: 'admin-dashboard' })}>

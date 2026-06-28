@@ -7,8 +7,9 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import type { Bill, BillStatus, DateRange, HouseState, Member } from './types';
+import type { Bill, BillStatus, DateRange, HouseState, Member, PaidSnapshotEntry } from './types';
 import { initialAdminCode, initialHouse, TODAY } from './mockData';
+import { calculate, NO_ROUNDING } from './calc';
 import * as api from './api';
 import type { BillInput } from './api';
 
@@ -140,7 +141,7 @@ interface AppContextValue {
   upsertBill: (input: BillInput) => Promise<string>;
   deleteBill: (billId: string) => Promise<void>;
   setBillStatus: (billId: string, status: BillStatus) => Promise<void>;
-  /** Confirm (or reopen) every bill at once — sets all to the given status. */
+  /** Mark paid (or reopen) every bill at once — sets all to the given status. */
   setAllBillsStatus: (status: BillStatus) => Promise<void>;
   regenerateMemberCode: () => Promise<void>;
 }
@@ -210,6 +211,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const go = (r: Route) => setStack((s) => [...s, r]);
     const back = () => setStack((s) => (s.length > 1 ? s.slice(0, -1) : s));
     const home = () => setStack([{ name: 'hub' }]);
+
+    // Freeze a bill's split at the moment it's settled. Uses the SAME calc the
+    // history table renders today — calculate(bill, members, NO_ROUNDING) — so a
+    // paid bill keeps showing the exact numbers it showed live (calc filters to
+    // active members internally, so only members active at settle time are
+    // captured). `name` is captured alongside the id so a later soft-removed or
+    // renamed member still displays correctly. This is the browser's computed
+    // output; the Worker only stores it (no maths server-side).
+    const snapshotFor = (bill: Bill): PaidSnapshotEntry[] =>
+      calculate(bill, house.members, NO_ROUNDING).shares.map((s) => ({
+        member_id: s.member.member_id,
+        name: s.member.name,
+        days: s.days,
+        amount: s.amount,
+      }));
 
     const createHouse = (displayName: string) =>
       run(async () => {
@@ -349,6 +365,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             period_start: input.period_start,
             period_end: input.period_end,
             status: input.status ?? 'draft',
+            paid_snapshot: input.paid_snapshot ?? null,
           };
         }
         setHouse((h) => {
@@ -374,13 +391,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }));
       });
 
-    // Status flips between draft and confirmed. 'confirmed' acts as a lock the
+    // Status flips between draft and paid. 'paid' acts as a lock the
     // member-facing UI honours; the admin can always reopen (back to draft).
     const setBillStatus = (billId: string, status: BillStatus) =>
       run(async () => {
         const current = house.bills.find((b) => b.bill_id === billId);
         if (!current) return;
-        const next: Bill = { ...current, status };
+        // Settling freezes the split; any other status (e.g. reopening to draft)
+        // clears the snapshot so the bill recalculates live again.
+        const snapshot = status === 'paid' ? snapshotFor(current) : null;
+        const next: Bill = { ...current, status, paid_snapshot: snapshot };
         if (connected && session) {
           const saved = await api.upsertBill(
             session.houseId,
@@ -391,6 +411,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
               period_start: next.period_start,
               period_end: next.period_end,
               status: next.status,
+              paid_snapshot: snapshot,
             },
             requireAdmin()
           );
@@ -409,6 +430,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const setAllBillsStatus = (status: BillStatus) =>
       run(async () => {
         const targets = house.bills.filter((b) => b.status !== status);
+        // Freeze each settled bill's split (one calc per bill); clear it for any
+        // other status. Computed once here and reused for both the API write and
+        // the local state update so the snapshot is identical in both.
+        const snapshots = new Map<string, PaidSnapshotEntry[] | null>(
+          targets.map((b) => [b.bill_id, status === 'paid' ? snapshotFor(b) : null])
+        );
         if (connected && session) {
           for (const b of targets) {
             await api.upsertBill(
@@ -420,6 +447,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 period_start: b.period_start,
                 period_end: b.period_end,
                 status,
+                paid_snapshot: snapshots.get(b.bill_id) ?? null,
               },
               requireAdmin()
             );
@@ -427,7 +455,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
         setHouse((h) => ({
           ...h,
-          bills: h.bills.map((b) => ({ ...b, status })),
+          bills: h.bills.map((b) =>
+            b.status === status
+              ? b
+              : { ...b, status, paid_snapshot: snapshots.get(b.bill_id) ?? null }
+          ),
         }));
       });
 

@@ -116,8 +116,8 @@ export function Calendar({
   const daysInMonth = new Date(view.year, view.month + 1, 0).getDate();
 
   const dayInPeriod = (key: string) => bills.some((b) => isInPeriod(key, b));
-  // A day inside a CONFIRMED or PAID bill's period is locked (final) — its split
-  // is settled, so it can't be edited without the admin reopening that bill.
+  // A day inside a PAID bill's period is locked (final) — its split is settled,
+  // so it can't be edited without the admin reopening that bill.
   const dayLocked = (key: string) =>
     bills.some((b) => b.status !== 'draft' && isInPeriod(key, b));
   const dayEditable = (key: string) => dayInPeriod(key) && !dayLocked(key);
@@ -197,7 +197,7 @@ export function Calendar({
               key={key}
               className={`cal-day ${cls}`}
               disabled={!editable}
-              title={locked ? 'This bill is confirmed — days are final' : undefined}
+              title={locked ? 'This bill is paid — days are final' : undefined}
               onClick={() => editable && toggle(key)}
             >
               {day}

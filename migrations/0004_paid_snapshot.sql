@@ -1,0 +1,27 @@
+-- 0004_paid_snapshot.sql — freeze a paid bill's split so it stops recalculating.
+--
+-- The bug (blueprint §6.7): a paid bill's split is recomputed live in the browser
+-- on every render from the CURRENTLY-active members (src/BillOverview.tsx ->
+-- src/calc.ts calculate(), which filters members.active). Soft-removing a member
+-- therefore retroactively changes the displayed split of bills that were already
+-- settled. A paid bill must be immutable.
+--
+-- The fix: when a bill is marked paid, the browser computes its split once
+-- (src/calc.ts, unchanged) and stores the result here. Paid bills then render the
+-- stored snapshot; draft bills keep recalculating live.
+--
+-- Architecture rule is preserved: the Worker still NEVER calculates. paid_snapshot
+-- holds the JSON the browser already computed; the Worker only persists/returns it,
+-- exactly like any other field.
+--
+-- Shape (a JSON-stringified array; see src/types.ts PaidSnapshotEntry):
+--   [ { "member_id": string, "name": string, "days": number, "amount": number }, ... ]
+--   one entry per member active at the moment of settling. `name` is captured now
+--   so a later-renamed or soft-removed member still displays correctly.
+--
+-- NULL for any bill that is draft, or that was paid BEFORE this migration ran.
+-- Backfilling pre-existing paid bills is intentionally OUT OF SCOPE: those bills
+-- keep recalculating live (BillOverview falls back to a live recalc when a paid
+-- bill has no snapshot). No CHECK-constraint or other column change here.
+
+ALTER TABLE bills ADD COLUMN paid_snapshot TEXT NULL;
