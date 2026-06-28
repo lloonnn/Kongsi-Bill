@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useApp } from '../store';
 import { Avatar, Frame, ProgressRow, ScreenNav, TopBar } from '../ui';
 import { Calendar } from '../Calendar';
@@ -40,8 +40,10 @@ function readInvite(): { house: string; code: string } | null {
 export function MemberJoin() {
   const { house, go, setCurrentMember, addMember, setPresence, confirmDays, joinHouse, error } =
     useApp();
-  // Read the invite once on first render so it stays stable across re-renders.
-  const invite = useRef(readInvite()).current;
+  // Read the invite once on mount so it stays stable across re-renders (the lazy
+  // useState initializer runs readInvite exactly once; reading state in render is
+  // fine, unlike reading a ref's .current).
+  const [invite] = useState(readInvite);
   const [step, setStep] = useState<Step>('code');
   // Pre-fill from the link so a failed auto-join leaves both fields ready to
   // retry by hand. A hand-typed code can't identify the house, so the manual
@@ -139,7 +141,7 @@ export function MemberJoin() {
     <Frame>
       <TopBar
         icon={step === 'code' ? '🔗' : 'LD'}
-        name={step === 'code' ? 'Join a house' : 'Lorong Damai 12'}
+        name={step === 'code' ? 'Join a house' : house.display_name}
         sub={subs[step]}
       />
       <div className="screen">
@@ -207,7 +209,7 @@ export function MemberJoin() {
               <h1 className="title">
                 You’re joining
                 <br />
-                <span className="accent">Lorong Damai 12</span>
+                <span className="accent">{house.display_name}</span>
               </h1>
               <p className="sub">
                 Bills here are split by how many days each person was home.

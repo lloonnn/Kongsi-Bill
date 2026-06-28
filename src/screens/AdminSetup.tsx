@@ -19,7 +19,7 @@ function toneClass(i: number) {
 export function AdminSetup() {
   const { go, createHouse, addMember, busy, error } = useApp();
   const [step, setStep] = useState(1);
-  const [houseName, setHouseName] = useState('Lorong Damai 12');
+  const [houseName, setHouseName] = useState('');
   const [codesSaved, setCodesSaved] = useState(false);
   // Start empty: the creator is NOT auto-added. They’re prompted to add
   // themselves (among others) — a house may even validly have no PIC member.
@@ -128,6 +128,7 @@ export function AdminSetup() {
             <input
               type="text"
               className="field"
+              placeholder="Your house name or address"
               value={houseName}
               onChange={(e) => setHouseName(e.target.value)}
             />

@@ -13,7 +13,7 @@ const TONES: AvatarTone[] = ['accent', 'alt2', 'alt3'];
  * id (never stored or sent). A stable string hash keeps each member's colour
  * consistent across renders.
  */
-export function toneFor(seed: string): AvatarTone {
+function toneFor(seed: string): AvatarTone {
   let h = 0;
   for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) | 0;
   return TONES[Math.abs(h) % TONES.length];

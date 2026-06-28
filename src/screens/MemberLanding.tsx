@@ -137,6 +137,14 @@ function ActiveBills({ member }: { member: Member }) {
 
   return (
     <>
+      {/* State header — makes "still to confirm" vs "confirmed" obvious at a
+          glance (the two looked near-identical, differing only at the bottom).
+          Display only: driven by the existing `confirmed` flag. */}
+      <div className="eyebrow-pill">{confirmed ? '✓ Days confirmed' : '🗓️ Action needed'}</div>
+      <h1 className="title sm" style={{ marginTop: 6 }}>
+        {confirmed ? 'You’re all set for now' : 'Which days were you away?'}
+      </h1>
+
       <div className="prompt-strip">
         <span className="pico">🗓️</span>
         <div>

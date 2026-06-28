@@ -1,6 +1,7 @@
 import { useApp } from '../store';
 import { Avatar, Frame, ScreenNav, StatusPill, TopBar } from '../ui';
 import { billIcon, billLabel, formatPeriod, groupBillsByCycle, money } from '../calc';
+import { isCycleActive } from '../cyclePlacement';
 import type { Bill } from '../types';
 
 /** Admin house home — bill list + quick actions into every admin tool. */
@@ -44,8 +45,12 @@ export function AdminDashboard() {
   const openBill = (b: Bill) => go({ name: 'admin-bill-detail', billId: b.bill_id });
 
   // Bills are grouped under their explicit cycle (migration 0005); Calculate acts
-  // on one cycle at a time — never across cycles.
-  const groups = groupBillsByCycle(house.bills, house.cycles);
+  // on one cycle at a time — never across cycles. The main screen shows only the
+  // ACTIVE cycles (open, or reopened — see cyclePlacement); finalized cycles live
+  // in History so settled history never floods the working view.
+  const groups = groupBillsByCycle(house.bills, house.cycles).filter((g) =>
+    isCycleActive(g.cycle, g.bills)
+  );
 
   return (
     <Frame>
@@ -57,16 +62,17 @@ export function AdminDashboard() {
         <div className="card admin">
           <div className="row-between" style={{ marginBottom: 4 }}>
             <div className="working-title" style={{ marginBottom: 0 }}>
-              1 · Bills by cycle
+              1 · Active cycles
             </div>
             <button className="copy-btn" onClick={() => go({ name: 'admin-add-cycle' })}>
               + New cycle
             </button>
           </div>
-          {house.cycles.length === 0 && (
+          {groups.length === 0 && (
             <p className="muted-note" style={{ marginBottom: 8 }}>
-              Start here — create a cycle (e.g. “June 2026”), then add its bills
-              (electricity, water…).
+              {house.cycles.length === 0
+                ? 'Start here — create a cycle (e.g. “June 2026”), then add its bills (electricity, water…).'
+                : 'No active cycles right now. Create a new one above, or find settled cycles in History.'}
             </p>
           )}
         </div>
@@ -85,9 +91,9 @@ export function AdminDashboard() {
                     <span className="tnum">{money(g.total)}</span>
                   </div>
                 </div>
-                <span className={`status-pill ${g.cycle.status === 'finalized' ? 'confirmed' : 'draft'}`}>
-                  {g.cycle.status === 'finalized' ? 'finalized' : 'open'}
-                </span>
+                {/* Everything on this screen is active; a reopened cycle (status
+                    still 'finalized' but with a draft bill) correctly reads "open". */}
+                <span className="status-pill draft">open</span>
               </div>
 
               {g.bills.length === 0 && (
