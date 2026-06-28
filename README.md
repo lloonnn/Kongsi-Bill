@@ -6,7 +6,7 @@ Kongsi Bill splits household bills — electricity, water, gas, whatever — bet
 
 > **"Kongsi"** is Malay for *sharing something within a group* — which is pretty much the whole point. The app is built with Singapore and Malaysia housemates in mind.
 
-**Last updated:** 27 June 2026 · *The frontend is at prototype stage (the UI will be redesigned). The calculation, data model, Worker API, architecture, and deployment described below are settled.*
+**Last updated:** 28 June 2026 · *The frontend is at prototype stage (the UI will be redesigned). The calculation, data model, Worker API, architecture, and deployment described below are settled.*
 
 ---
 
@@ -58,10 +58,10 @@ Kongsi Bill takes that spreadsheet off your hands, keeps a shared history for th
 
 1. Someone sets up a **house** and gets a room ID and two codes.
 2. **Housemates** tap a link to join, and mark the days they were home on a calendar.
-3. The person in charge enters each **bill** — what it's for, how much, and the dates it covers.
-4. The app works out each person's share based on the days they were home **during that bill's dates**, and shows its working.
-5. A bill stays **open** (editable) with no time limit. When the cycle's settled, the PIC marks it **paid**, which closes it and freezes the days in its period so a settled split can't change.
-6. You can export the history as a spreadsheet — with the formulas built in, so anyone can check the numbers. *(Export is planned; the current prototype confirms the action but doesn't generate a file yet.)*
+3. The person in charge creates a named **cycle** (e.g. "June 2026") and enters that period's **bills** into it — what each is for, how much, and the dates it covers.
+4. The app works out each person's share based on the days they were home **during that bill's dates**, and shows its working. **"Calculate" runs over one cycle at a time** — combining that cycle's bills into a single per-person total — never across cycles.
+5. A bill stays **open** (editable) with no time limit. When the cycle is settled, the PIC calculates and settles it: each bill's split is **frozen as a saved snapshot**, the cycle is marked **finalized**, and it moves to a **History** view. A frozen split can't change afterwards, even if someone edits days or moves out.
+6. You can export the records as a **CSV file** — the final numbers, ready to open in any spreadsheet. ("Export latest" gives the newest cycle's bills; "full history" gives every cycle.)
 
 ---
 
@@ -155,14 +155,14 @@ Round down → you're short; round up → there's extra.
 
 **Each share:**
 
-| Person | The sum         | Share  |
-|--------|-----------------|--------|
+| Person | The sum         | Share (to the cent) |
+|--------|-----------------|---------------------|
 | Alice  | 31 ÷ 67 × 100   | 46.27  |
 | Bob    | 15 ÷ 67 × 100   | 22.39  |
 | Carol  | 21 ÷ 67 × 100   | 31.34  |
 | **Total** |              | **100.00** ✓ |
 
-It adds back up to $100. ✓
+The **Share** column is each person's amount **rounded to the nearest cent**. The raw fractions are `46.2686…`, `22.3880…`, `31.3432…`; the app allocates the cents (handing any leftover cent to the largest fractional parts) so the displayed shares total **exactly** the bill amount. It adds back up to $100. ✓
 
 **With rounding on (round down to 5 cents):**
 
@@ -200,7 +200,7 @@ If your answer doesn't match the app's, **the app is wrong** — please open an 
 | Frontend     | **React + Vite** (a static site, *prototype stage*) | Good for the interactive calendar and live maths; builds to static files. The UI is a prototype and will be redesigned. |
 | The maths    | **Plain TypeScript, in your browser**         | The bit everyone audits — simple, in-house, no library.     |
 | Calendar     | **Hand-written** (plain TypeScript + native dates) | Date logic and multi-range selection, written in-repo — no date library is installed yet. |
-| Export       | **SheetJS** (`xlsx`) — *planned*              | Intended for a spreadsheet with live formulas; not yet wired up (the export screen is a prototype placeholder). |
+| Export       | **Plain CSV**, generated in the browser       | A `.csv` of the final, already-computed numbers (one table per cycle) — opens in any spreadsheet. No `xlsx`/SheetJS dependency and no live formulas; the numbers are the same ones shown on screen. |
 | The API      | **Cloudflare Worker** (just for storage)      | Saves and fetches data under `/api`. Does none of the maths. |
 | Database     | **Cloudflare D1** (SQLite)                     | Stores houses, members, days, and bills.                    |
 | Hosting      | **A single Cloudflare Worker** (serves the site *and* the API) + D1 | One Worker serves the static build and the API from one origin; serving the site is free and unlimited. |
@@ -233,7 +233,7 @@ kongsi-bill/
 │   └── screens/              ← the screens (admin + member flows)
 ├── worker/
 │   └── index.ts              ← the single Cloudflare Worker (serves static site + /api)
-├── migrations/               ← D1 schema: 0001_init, 0002_drop_lock, 0003_confirm_and_paid
+├── migrations/               ← D1 schema: 0001_init, 0002_drop_lock, 0003_confirm_and_paid, 0004_paid_snapshot, 0005_cycles
 └── package.json
 ```
 
@@ -271,7 +271,7 @@ The repo is connected to Cloudflare through its **GitHub (Git) integration**, wh
 - `wrangler deploy` publishes the **single Worker** and uploads the Vite `dist/` output via the static-assets binding — so one deploy ships **both** the site and the API.
 - **Database** → Cloudflare D1, with schema changes applied through `migrations/`.
 
-The site runs on the free `*.workers.dev` address. (No custom domain — not needed.)
+The site runs on the free `*.workers.dev` address — live at **`https://kongsi-bill.app-my.workers.dev`**. (No custom domain — not needed.) Join links are built same-origin from wherever the app is served (relative `/join?house=…&code=…`), so they always point at the right place.
 
 ---
 
@@ -285,7 +285,7 @@ Upkeep is light and occasional: dependency updates a few times a year; a little 
 
 ## Our promise on the maths
 
-This repo is the **official home of the formula.** The explanation, assumptions, and worked example above are written so you can redo any result by hand. The calculation lives as plain, readable TypeScript in `src/calc/` — not buried in a library — so anyone can open it and check it. If the app ever gives you a number you can't match using [Check it yourself by hand](#check-it-yourself-by-hand), that's a bug — please open an issue with the numbers.
+This repo is the **official home of the formula.** The explanation, assumptions, and worked example above are written so you can redo any result by hand. The calculation lives as plain, readable TypeScript in `src/calc.ts` — not buried in a library — so anyone can open it and check it. If the app ever gives you a number you can't match using [Check it yourself by hand](#check-it-yourself-by-hand), that's a bug — please open an issue with the numbers.
 
 ---
 

@@ -4,7 +4,7 @@
 
 **Document status:** design reference. This is the design reference for what Kongsi Bill is, what it does, and how it is built. It seeds the repository README and guides the UI/UX design stage. Where the built code and config have moved on from the original v1 design, this document has been reconciled to the code (the code + config in `worker/`, `wrangler.toml`, `src/`, and `migrations/` are the source of truth); the frontend remains at prototype stage and its screen design is not final.
 
-**Last updated:** 27 June 2026
+**Last updated:** 28 June 2026
 
 ---
 
@@ -73,14 +73,14 @@ Electricity bill: amount = $100.00, period = 1–31 Jan (31 days).
 
 `total_person_days = 31 + 15 + 21 = 67`
 
-| Person | Calculation        | Raw share |
-|--------|--------------------|-----------|
+| Person | Calculation        | Share (to the cent) |
+|--------|--------------------|---------------------|
 | Alice  | 31 / 67 × 100      | 46.27     |
 | Bob    | 15 / 67 × 100      | 22.39     |
 | Carol  | 21 / 67 × 100      | 31.34     |
 | **Sum**|                    | **100.00** ✓ |
 
-The sum reconciles with the bill total. Water and any other utility are computed the same way, with their own periods and day counts.
+The **Share** column is each person's amount rounded to the nearest cent — *not* the literal fraction (`31/67 × 100 = 46.2686…`). With rounding off, the shares are allocated to whole cents by **largest remainder** (the leftover cent or two go to the largest fractional parts) so they sum to **exactly** the bill amount. The sum reconciles with the bill total. Water and any other utility are computed the same way, with their own periods and day counts.
 
 ### 3.3 Rules, assumptions & edge cases
 
@@ -129,7 +129,7 @@ No individual user accounts, no passwords, no email/login, no always-on database
 | Code | Held by | Can do |
 |------|---------|--------|
 | **Member code** | All housemates | Join the house, record their own presence days, view splits. |
-| **Admin code** | The PIC only | Everything members can, plus add/edit bills, calculate, mark a bill paid (settle/close it), manage members, regenerate the member code, export. |
+| **Admin code** | The PIC only | Everything members can, plus create cycles, add/edit bills, calculate a cycle, settle a cycle (mark its bills paid, freezing each split), manage members, regenerate the member code, export. |
 
 Admin is a **capability, not a separate entity**: there is no `admin_member_id` and no admin record. The PIC is simply whoever holds the admin code, and is otherwise an ordinary member (or not a member at all — see §5.2.1). The codes *are* the access mechanism — there is no separate identity. This is the deliberate trade that removes authentication entirely. Its accepted limitations: the app cannot prove *which* member acted (no per-person accountability), and security depends on codes being kept within the house.
 
@@ -140,7 +140,7 @@ Because the admin is just the holder of the admin code, creating a house does **
 ### 5.3 Entry paths
 
 - **Members** use a **one-tap join link** with the member code embedded:
-  `kongsibill.workers.dev/join?house=ABC123&code=XYZ`
+  `/join?house=ABC123&code=XYZ` — built **same-origin/relative** from wherever the app is served (in production, `https://kongsi-bill.app-my.workers.dev`), so it always points at the right place.
   This drops them straight into their house's day-entry view with no typing. The link carries the keys, so it lives only in the house group chat.
 - **Admins** use a separate **manage path** (`/manage`) and enter the admin code. The admin code is **never embedded in a link** — it stays typed and private.
 - Asymmetry by design: member code travels in links (convenience); admin code never does (protection).
@@ -155,8 +155,8 @@ Because the admin is just the holder of the admin code, creating a house does **
 
 A focused reference for whoever becomes PIC. The admin code is the master key for a single house and the only proof of PIC status (there are no accounts).
 
-- **Powers it unlocks** (everything a member can do, plus): add/edit bills while they are open; calculate the split; **mark a bill paid**, which closes (settles) it and locks its period; add/soft-remove members; export latest or full history; regenerate the member code; hand over to the next PIC. (There is no time-based lock and no admin override — an open bill stays fully editable for as long as it is open; see §7.)
-- **When used:** roughly once per bill (add bill → collect days → calculate → mark paid), plus off-cycle housekeeping (member changes, a leaked code).
+- **Powers it unlocks** (everything a member can do, plus): create a cycle and add/edit bills in it while they are open; calculate a cycle; **settle a cycle** — marking its bills paid, which saves a snapshot of each split and finalizes the cycle into History (see §7); add/soft-remove members; export latest cycle or full history; regenerate the member code; hand over to the next PIC. (There is no time-based lock and no admin override — an open bill stays fully editable for as long as it is open; see §7.)
+- **When used:** roughly once per billing cycle (create cycle → add its bills → collect days → Calculate → settle), plus off-cycle housekeeping (member changes, a leaked code).
 - **How used — typed, never linked:** the admin reaches the manage path (`/manage`) and **types the admin code by hand each time**. Unlike the member code, it is never embedded in a link, because the member join link is pasted into the house group chat where it is visible. Typing keeps the admin code out of chat history and link previews. This is the deliberate asymmetry from §5.3.
 - **Unrecoverable:** with no accounts there is no reset. A lost admin code with no holder orphans the house (members can still view, but no one can administer). This is why the save-codes step at creation (§5.4) is treated as the one critical, unskippable moment, and why handoff means deliberately passing the code on.
 
@@ -201,21 +201,25 @@ Each member owns their own presence ranges (stored one row per range in `presenc
 ```
 bill_id           string
 house_id          string
+cycle_id          string    (which billing cycle this bill belongs to; FK → cycles.cycle_id)   [added in migration 0005]
 utility_label     string   (single free text: "Electricity", "Water", "Gas", "Internet", or anything typed)
 amount            number    (record-keeping only; never used to compute the split — that is done in the browser)
 period_start      date
 period_end        date
 status            enum      (draft | paid; see §7)
+paid_snapshot     JSON | null   (the split frozen at settlement; null while the bill is open)   [added in migration 0004]
 schema_version    integer
 ```
 Notes:
+- `cycle_id` groups every bill under an admin-named **cycle** (§6.8). It is `NOT NULL` — a bill always belongs to a cycle — and the Worker verifies the cycle exists in the same house on write.
 - `utility_label` is a single free-text field. The UI offers a convenience dropdown (Electricity / Water / Gas / Internet / Other → free text) that simply resolves to this one label; the preset list never travels to the API.
-- `status` carries the two-state lifecycle: `draft` = **Open** (fully editable) and `paid` = **Closed** (settled/frozen). The schema's `CHECK` constraint also still permits the legacy value `'confirmed'` (the original three-stage design), but it is **unused** by the current product — the lifecycle is just draft → paid.
+- `status` carries the two-state lifecycle: `draft` = **Open** (fully editable) and `paid` = **Settled/frozen**. The schema's `CHECK` constraint also still permits the legacy value `'confirmed'` (the original three-stage design), but it is **unused** by the current product — the lifecycle is just draft → paid.
+- `paid_snapshot` is the **frozen split** the browser computes once, at the moment the bill is settled, and the Worker stores verbatim (a JSON array of `{ member_id, name, days, amount }`). A paid bill renders this snapshot and never recalculates, so its split is immutable regardless of later presence edits or member removals. It is `null` for any open (draft) bill, and for any bill settled before migration 0004. The Worker still computes nothing — it only persists what the browser produced.
 - The original `confirmed_at` column (which started the 7-day grace window) was **dropped in migration 0002**; there is no grace window any more.
 
 ### 6.5 Change log — removed
 
-The original design included a `change_log` table to record edits and admin overrides. It has been **removed entirely** — there is no change-log table, no audit trail, and nothing is "logged." This follows from dropping the lock/override model (§7): there are no overrides to record. Edits to an open bill are simply allowed; once a bill is paid its period is frozen server-side (§7).
+The original design included a `change_log` table to record edits and admin overrides. It has been **removed entirely** — there is no change-log table, no audit trail, and nothing is "logged." This follows from dropping the lock/override model (§7): there are no overrides to record. Edits to an open bill are simply allowed; once a bill is paid its split is frozen by a saved snapshot (§7).
 
 ### 6.6 Date handling
 
@@ -225,24 +229,40 @@ The original design included a `change_log` table to record edits and admin over
 
 ### 6.7 Soft-delete & lifecycle
 
-- Departed housemates are **soft-removed** (`active = false`): they no longer appear in new bills but remain attached to past bills so history stays intact and totals still reconcile. Soft-remove is **one-way** — there is no restore endpoint in the API.
+- Departed housemates are **soft-removed** (`active = false`). Removal is **forward-only and never rewrites the past**: a settled bill keeps its saved `paid_snapshot` untouched, and an open bill still includes the member wherever their recorded presence overlaps the bill's period. Crucially, member inclusion in a split is decided by **presence-overlap with the bill period, not by the current `active` flag** (`src/calc.ts` `wasPresentInPeriod`) — so a soft-removed member keeps their rightful share of bills from while they lived here, and old splits still reconcile exactly. `active` only governs who appears in the *new-bill* UI, not who is counted in past bills. Soft-remove is **one-way** — there is no restore endpoint in the API.
 - Members are never hard-deleted. **Bills**, by contrast, *can* be deleted outright (the "remove bill" action hard-deletes the row), because a bill has no dependents — presence is tied to members, not bills — so removing a mistaken bill leaves no dangling references and never touches anyone's history.
+
+### 6.8 Billing cycle (migration 0005)
+```
+cycle_id          string    (primary key)
+house_id          string    (which house)
+display_name      string    (admin-typed, e.g. "June 2026")
+status            enum      (open | finalized)
+created_at        date
+schema_version    integer
+```
+A **cycle** is an explicit, admin-named billing period that groups that period's bills (electricity + water + …). It replaces the earlier implicit "group bills by the month they end in." Key points:
+- **Calculate acts on one cycle at a time** — it combines only that cycle's bills into each person's total, never across cycles (`groupBillsByCycle` in `src/calc.ts` feeds one cycle's bills into the existing, unchanged per-bill maths). Because cycles are explicit, two cycles may carry **overlapping dates** without interfering.
+- `status` is `open` → `finalized` — a label only (like `bills.status`, it never gates storage). Settling a cycle's bills sets it to `finalized`.
+- **Placement follows status (display only).** The admin bills screen shows **active** cycles — those whose status is not `finalized`, *or* that still have any `draft` bill; **finalized** cycles move to a **History** view (`src/cyclePlacement.ts` `isCycleActive`, with `AdminDashboard`/`AdminHistory`). Reopening a settled bill flips it back to `draft`, which pulls its whole cycle back to the active screen until it is calculated and settled again.
+- **Endpoints:** `POST /api/house/:id/cycle` creates or updates a cycle (admin only), mirroring the bill-upsert endpoint; `GET /api/house/:id` returns the house's `cycles` array alongside its bills, and every bill carries its `cycle_id`.
+
+Migration 0005 introduced the `cycles` table and the `bills.cycle_id` foreign key (wiping the pre-cycle test bills for a clean start).
 
 ---
 
-## 7. Bill lifecycle (Open → Closed)
+## 7. Bill lifecycle, the freeze & cycles
 
-The lifecycle is two states. The original three-stage draft → confirmed → locked model — with its 7-day grace period, time-based lock, and admin override — is **gone**.
+The bill lifecycle is two states. The original three-stage draft → confirmed → locked model — with its 7-day grace period, time-based lock, and admin override — is **gone**.
 
-1. **Open** (`status = draft`) — the bill is fully editable: the admin can change its amount, label, and dates, and housemates can keep marking their days. **There is no time limit** — an open bill stays editable indefinitely. Nothing about the passage of time locks it.
-2. **Closed** (`status = paid`) — the admin marks the bill **paid** once it has been settled (money collected, landlord paid). This is the lock: marking a bill paid freezes it.
+1. **Open** (`status = draft`) — fully editable: the admin can change its amount, label, dates, or cycle, and housemates keep marking their days. **There is no time limit** — nothing about the passage of time locks it.
+2. **Settled** (`status = paid`) — when the admin Calculates and settles the cycle, each of its bills is marked paid. Settling **saves a `paid_snapshot`** (§6.4): the browser computes the split once and stores it, and from then on the bill renders that snapshot and **never recalculates**.
 
-**Marking a bill paid is the only lock**, and it is **enforced server-side**, not merely in the UI:
+**The snapshot is the freeze.** Because a settled bill displays its stored snapshot rather than a live recalculation, its split is immutable — editing presence, or soft-removing a member, can no longer change a bill that has already been paid. This is the primary, structural protection, and it is **per-bill**.
 
-- The Worker rejects (HTTP **409**) any presence edit whose date range overlaps the period of any **paid** bill in that house. So once a bill covering, say, 1–31 May is paid, no member's days inside that window can be changed — the settled split can't shift under everyone's feet. This is a date-range overlap check against paid bills' periods, not a status flag on presence rows. (It is purely a validation guard; the Worker still computes no shares — see §10.1.)
-- While a bill is **open** (`draft`), it imposes no such restriction; days inside an open bill's period stay editable.
+**A precise server-side guard, not a blanket date lock.** Earlier the Worker rejected any presence edit overlapping *any* paid bill's period — a calendar-wide sweep that wrongly blocked an unrelated bill in a different cycle from using the same dates. That is fixed. The guard (`presenceHitsLock` in `worker/index.ts`, mirrored on the client by `src/presenceLock.ts` `billFreezesPresence`) now rejects (HTTP **409**) a presence edit only when it overlaps a paid bill that has **no snapshot** — the one case where an edit could still shift a settled result. A paid bill **with** a snapshot is already frozen, so overlapping it is allowed, and a different cycle's bill may freely span the same dates (it just reads the frozen presence; it never rewrites it). Money-protection holds either way — frozen by the snapshot, or, for any legacy snapshot-less paid bill, by this date guard. The Worker still computes no shares (§10.1).
 
-There is no "reopen," grace window, time-based lock, or admin override in the current product. (`status` can still be set back to `draft` via the bill-upsert endpoint, which would lift the server-side freeze on that period — but there is no dedicated override/audit mechanism, and nothing is logged.)
+**Reopen.** A settled bill can be reopened (its `status` set back to `draft` via the bill-upsert endpoint), which clears its snapshot and makes it editable again. Because cycle placement follows status (§6.8), reopening a bill returns its whole cycle from History to the active screen until it is recalculated and settled. There is still no grace window, time-based lock, admin override, or audit log — settling and reopening are plain, deliberate status changes, and nothing is logged.
 
 ---
 
@@ -262,19 +282,19 @@ Three journeys plus lifecycle actions. (A visual flowchart of this exists alongs
 2. Select days present on a calendar; add multiple date ranges to cover gaps when away.
 3. Save own record (overlaps auto-merged).
 
-*(Members can update presence any time while the relevant bill is still open; once a bill covering those dates is marked paid, those days are frozen server-side (§7). The admin can also enter days on a member's behalf. B feeding into C is the typical path, not the only one.)*
+*(Members can update presence any time; once a bill covering those dates is settled, that bill's split is frozen by its snapshot (§7), so a later edit can't change it. The admin can also enter days on a member's behalf. B feeding into C is the typical path, not the only one.)*
 
 ### Journey C — Admin calculates & finalises
-1. Add a bill (utility label, amount, billing period).
-2. App computes shares from everyone's presence, clipped to the bill's period.
+1. **Create a cycle** (name the period, e.g. "June 2026") and add that period's bills (utility label, amount, billing period) into it.
+2. **Calculate the cycle** — the app combines its bills and computes each person's total from everyone's presence, clipped to each bill's own period (never mixing in another cycle's bills).
 3. Validate — reconciliation and zero-denominator flags, with actionable messages.
 4. Optional rounding toggle (down/up, off by default); remainder surfaced.
-5. When the cycle is settled, **mark the bill paid** → it closes and its period is frozen server-side (§7). Until then it stays open and editable.
+5. When the cycle is settled, **settling marks its bills paid and saves each split's snapshot** (§7); the cycle is **finalized** and files into History. Until then it stays open and editable.
 
 ### View, export & lifecycle
-- View history — a flat list of bills, each with its own period.
-- Export — **latest** bill or **full history** (planned as XLSX with live formulas; see §10.2 — the current frontend prototype confirms the action but does not yet generate a file).
-- Lifecycle — soft-remove a departed housemate (one-way); regenerate a leaked code; delete a mistaken bill.
+- View history — **finalized cycles** in a History view (each cycle's bills combined into one per-person total); active/open cycles stay on the main screen (§6.8).
+- Export — **latest cycle** (newest cycle with bills) or **full history** (all cycles), generated client-side as **CSV** of the final numbers (see §10.2).
+- Lifecycle — soft-remove a departed housemate (one-way); regenerate a leaked code; delete a mistaken bill; **reopen** a settled bill to correct it (returns its cycle to active).
 
 ---
 
@@ -299,7 +319,7 @@ Carried into the dedicated UI/UX stage; recorded here so they are not lost.
 
 ### 10.1 Guiding principle
 
-Push as much as possible into static files and the browser; keep the server doing the minimum. The app is fundamentally arithmetic plus a little storage, so the core logic is client-side, instant, free to run, and works even if the backend is down. The server only stores and retrieves — it **never calculates** (it validates input shape on save as a safety net only). The one piece of business-rule enforcement it does perform — rejecting presence edits that overlap a paid bill's period (§7) — is a date-range *validation guard*, not a calculation: it still never sums days or splits an amount.
+Push as much as possible into static files and the browser; keep the server doing the minimum. The app is fundamentally arithmetic plus a little storage, so the core logic is client-side, instant, free to run, and works even if the backend is down. The server only stores and retrieves — it **never calculates** (it validates input shape on save as a safety net only). The one piece of business-rule enforcement it does perform — rejecting a presence edit that overlaps a **snapshot-less paid bill's** period (§7) — is a *validation guard*, not a calculation: it still never sums days or splits an amount. (A paid bill with a snapshot is already frozen by that snapshot, so it imposes no such restriction.)
 
 ### 10.2 Stack
 
@@ -309,7 +329,7 @@ Push as much as possible into static files and the browser; keep the server doin
 | Frontend | **React + Vite** (a static SPA, **prototype stage**) | Stateful calendar and live calculation suit React; Vite builds a plain static bundle (`dist/`). **Not Next.js** — no server rendering needed. The current UI/layout is a prototype and will be redesigned; the data/API contract it speaks is settled. |
 | Calculation | **Plain TypeScript in the browser** (`src/calc.ts`) | The auditable heart of the app; owned in-repo, no library. |
 | Calendar/date | **Hand-rolled** calendar + native `Date` interval helpers | Date logic and multi-range selection are written in-repo (`src/Calendar.tsx`, `src/calc.ts`) with no date library currently installed. *(The original plan named `date-fns` + a picker; not yet a dependency — see flag below.)* |
-| Export | Planned: **SheetJS (`xlsx`)**, client-side, XLSX with live formulas | The export *screen* exists in the prototype but currently only confirms the action — no file is generated and `xlsx` is not yet a dependency. |
+| Export | **Plain CSV**, generated client-side (no library) | Writes the final, already-computed numbers (one table per cycle) to a `.csv` in the browser — `src/export.ts`. No `xlsx`/SheetJS dependency and no live formulas; the numbers match the screen exactly. |
 | API | **Cloudflare Worker** (thin storage API, hand-routed, no framework) | Receives saves/reads under `/api`, validates input, writes/returns JSON. No rendering, no calculation. |
 | Database | **Cloudflare D1 (SQLite)** | Data is relational (houses → members → presence/bills); D1 queries this naturally where KV would force hand-rolled JSON blobs. Supports migrations for schema versioning. |
 | Hosting | **A single Cloudflare Worker** serving both the static site and the API, plus D1, one account | One Worker, one origin: it serves the Vite build via a static-assets binding *and* the `/api` routes. Static asset serving is free; only API calls count against limits. |
@@ -349,7 +369,8 @@ Mostly configuration, not code:
 ### 11.2 Libraries
 - Runtime dependencies are currently just **React** and **React DOM**; the toolchain (Vite, TypeScript, ESLint, Wrangler) is in devDependencies.
 - The calculation, the calendar, and all date/interval logic are **hand-written TypeScript — no library.**
-- *Planned but not yet installed:* `date-fns` (or similar) and a date-range picker, and `xlsx` (SheetJS) for export. These are referenced as the intended approach but are not current dependencies.
+- **Export** is shipped as **plain CSV generated in-browser** (`src/export.ts`) — there is **no `xlsx`/SheetJS dependency**, and the earlier "XLSX with live formulas" plan was deliberately dropped in favour of a dependency-free CSV of final numbers.
+- *Planned but not installed:* `date-fns` (or similar) and a date-range picker. These are referenced as the intended approach but are not current dependencies.
 
 ### 11.3 Accounts & environment
 - **Cloudflare account** (free) — Workers (serving both static assets and the API), D1.
@@ -391,10 +412,12 @@ This is a bounded, intermittent load — not an always-on liability.
 
 ## 13. v1 scope vs. later
 
-**Build v1 (the lean core path first):**
-create house → save codes → add members → member join link → calendar presence entry → add bill → calculate → validate → optional rounding → confirm/grace/lock → view history → export (latest & full).
+**The lean core path (as built):**
+create house → save codes → add members → member join link → calendar presence entry → **create a cycle → add that period's bills into it → Calculate the cycle → validate → optional rounding → settle (mark bills paid, freeze each split's snapshot, finalize the cycle into History)** → view history → export (latest cycle & full history, as CSV).
 
-Plus the essential safety/UX: save-codes flow, actionable flags, show-the-working, preview-before-confirm, soft-remove, change log, regenerate code.
+Plus the essential safety/UX: save-codes flow, actionable flags, show-the-working, preview-before-confirm, soft-remove, regenerate code.
+
+> *Superseded since the original v1 plan:* the old "confirm → grace → lock" step and the `change_log`/audit trail were dropped — the lifecycle is simply **draft → paid**, the freeze is a per-bill **snapshot** (§7), and nothing is logged. Bills are grouped into explicit **cycles** (§6.8), and export ships as **CSV**, not XLSX.
 
 **Hold for later (v2), add only if real use justifies:**
 default-to-present calendar, copy-last-period, the house info card polish, and — explicitly parked — PDF bill auto-fill (it needs a backend that does work and per-use cost, breaking the no-backend simplicity; worth it mainly for combined multi-utility bills, and only as an opt-in, always-verify, best-effort feature).

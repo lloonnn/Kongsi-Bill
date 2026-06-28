@@ -2,7 +2,7 @@
 
 *The complete guide to using and understanding Kongsi Bill. This is a living document — it will be updated as questions come up and things need clarifying.*
 
-**Last updated:** 27 June 2026
+**Last updated:** 28 June 2026
 
 > New here? Start with [Quick start](#quick-start). Running a house? See [Being the PIC](#being-the-pic). Just need to enter your days? See [For housemates](#for-housemates).
 
@@ -38,7 +38,7 @@
 2. **Save those codes somewhere safe right away** — there's no way to recover them later. This is the one step you can't skip.
 3. Add your housemates (add yourself too if you share the bills — you're prompted to, but it's optional).
 4. Share the **join link** into your house group chat so everyone can join.
-5. When a bill arrives, enter it and let the app calculate. It stays **open** (editable) for as long as you like; when everyone's paid up, mark it **paid** to settle and close it.
+5. Create a **cycle** for the period (e.g. "June 2026"), add that period's bills into it, and let the app calculate. Bills stay **open** (editable) for as long as you like; when everyone's settled up, **Calculate** the cycle — its split is frozen and the cycle files itself into **History**.
 
 **If you're a housemate joining:**
 1. Tap the **join link** someone shared in the group chat.
@@ -57,6 +57,7 @@
 - **Admin code** — the master key. Only the PIC holds it; it unlocks running the bills.
 - **Bill** — one utility charge (electricity, water, gas…) with an amount and a date range.
 - **Billing period** — the dates a bill covers. Your share depends on how many of those days you were home.
+- **Cycle** — a named group of bills for one period, e.g. "June 2026". The PIC creates a cycle and puts that period's bills (electricity, water…) inside it. **"Calculate" works on one cycle at a time** and combines its bills into a single per-person total; different cycles are completely independent, so two cycles can even cover overlapping dates without affecting each other. Active cycles sit on the main screen; once a cycle is calculated and settled it moves to **History**.
 
 A simple way to hold it: the **room ID is the address**, and the **two codes are keys** — a normal key everyone gets, and a master key just for the PIC.
 
@@ -71,7 +72,7 @@ Your job is simple: tell the app which days you were home.
 3. **Save.** If your ranges happen to overlap, the app tidies them up automatically so you're never counted twice.
 
 A few things to know:
-- You can **update your days any time while the bill covering them is still open.** Once a bill is marked **paid** (settled), the days inside its period are frozen — the app will refuse an edit that overlaps a paid bill's dates, so a settled split can't be quietly changed.
+- You can **update your days any time.** When a bill is settled (marked **paid**), the app saves a **snapshot** of that bill's split — so a settled split is frozen and **can't change afterwards**, no matter what anyone edits later. You can still mark days for other, open bills even if their dates overlap an already-settled bill's period (a new bill just reads the frozen days; it never rewrites them).
 - **If you don't mark any days at all, you're counted as present for the whole period** — you still get a fair share rather than being dropped to zero. Mark your days only to record the times you were *away*.
 - You only ever edit **your own** days. You can see everyone's splits, but you mark only yourself.
 - If you recorded days and were away the **whole** period of a bill, your share for that bill is **$0** — that's correct, not a mistake.
@@ -87,12 +88,13 @@ If you're the person-in-charge, the **admin code is your master key.** The membe
 ### What the admin code lets you do
 
 Everything a housemate can do, plus the bits that count:
-- **Add and edit bills** — enter a new bill with its amount and dates, or fix one. An open bill stays editable as long as you need; there's no countdown.
-- **Calculate the split** — work out everyone's share from the days they were home.
-- **Mark a bill paid (settle it)** — when the money's in and you've paid the landlord, mark the bill paid. This **closes** it and freezes the days inside its period, so the settled split can't change afterwards.
+- **Create a cycle** — name a billing period (e.g. "June 2026") to hold that period's bills.
+- **Add and edit bills** — enter a new bill (its cycle, amount, and dates) or fix one. An open bill stays editable as long as you need; there's no countdown.
+- **Calculate a cycle** — work out everyone's share for one cycle, combining its bills into a single per-person total. Calculate only ever acts on the one cycle, never across cycles.
+- **Settle a cycle** — when the money's in and you've paid the landlord, settling Calculate's result marks the cycle's bills **paid** and saves a **snapshot** of each split. The cycle is then **finalized** and moves to History; the snapshot means the settled split can't change afterwards.
 - **Delete a mistaken bill** — remove a bill you added by accident. (People are never deleted — only bills.)
 - **Manage housemates** — add someone new, or remove someone who moved out (removal is one-way; they stay attached to past bills).
-- **Export** — download the latest bill or the full history as a spreadsheet.
+- **Export** — download the latest cycle, or the full history, as a **CSV file** (final numbers, opens in any spreadsheet).
 - **Regenerate the member code** — if it leaks, make a fresh one (this cancels all old join links).
 - **Hand over to the next PIC** — pass the role on by giving them the admin code.
 
@@ -100,13 +102,14 @@ In short: housemates *put in their days and look*; you *run the bills*.
 
 ### When you'll use it
 
-Usually about once per bill, plus the odd bit of housekeeping:
-1. A bill arrives in real life.
-2. You open the manage page, type the admin code, and add the bill.
-3. Everyone's marked their days (or you nudge them).
-4. You calculate, check the working, optionally turn on rounding.
-5. Once everyone's settled up, you mark the bill **paid** to close it.
-6. Done until the next bill — unless someone moves in/out or a code leaks.
+Usually about once per billing cycle, plus the odd bit of housekeeping:
+1. The period's bills arrive in real life.
+2. You open the manage page, type the admin code, and **create a cycle** for the period.
+3. **Add that period's bills** into the cycle (electricity, water…).
+4. Everyone's marked their days (or you nudge them).
+5. You **Calculate** the cycle, check the working, optionally turn on rounding.
+6. Once everyone's settled up, you **settle** it — the cycle's bills are marked paid and frozen, and the cycle files into History.
+7. Done until the next cycle — unless someone moves in/out or a code leaks.
 
 ### How you actually use it — typed, never in a link
 
@@ -190,30 +193,34 @@ That's the convenience-for-members, protection-for-admins design working as inte
 
 ## The life of a bill
 
-A bill has just two states: **Open**, then **Closed**.
+A bill has two states, and it always lives inside a **cycle**.
 
-1. **Open** — the bill is live and fully editable. The PIC can change its amount, label, or dates, and housemates can keep marking their days. **There's no time limit** — a bill stays open for as long as you want; nothing locks it automatically.
-2. **Closed (paid)** — when the cycle's settled, the PIC marks the bill **paid**. That's the lock: the bill freezes, and the days inside its period can no longer be changed. If anyone tries to edit days that overlap a paid bill's dates, the app refuses the change. This is enforced by the server, not just hidden in the screen — so a settled split genuinely can't shift afterwards.
+1. **Open** (`draft`) — live and fully editable. The PIC can change its amount, label, dates, or which cycle it's in, and housemates can keep marking their days. **There's no time limit** — nothing locks a bill as time passes.
+2. **Settled** (`paid`) — when the PIC Calculates and settles the cycle, each bill is marked paid and the app saves a **snapshot** of its split. The snapshot is the freeze: a settled bill shows its saved numbers and **never recalculates**, so the split can't change afterwards — not when someone edits their days, not when someone moves out.
 
-That's the whole lifecycle. There's no grace period, no countdown to a lock, and no "admin override" — while a bill is open it's simply editable, and marking it paid is the single, deliberate step that settles it. (Nothing is logged or audit-trailed; the freeze is the protection.)
+Because the freeze is a saved snapshot (not a calendar lock on the dates), a settled bill **doesn't stop** you marking days for a *different* bill whose dates happen to overlap — the new bill simply reads the already-frozen days. The only time the app refuses a day edit is the rare case of a settled bill that has **no** saved snapshot, where an edit genuinely could shift the result; there it's blocked to protect the settled split. (Enforced by the server, not just the screen.)
+
+**Cycles — active vs History.** Open cycles (and any cycle you've reopened) sit on the main bills screen. Once a cycle is settled it's **finalized** and moves to the **History** view, so your working screen only shows what's still in progress. If you need to fix a settled bill, **reopen** it: that bill becomes editable again and its whole cycle returns to the main screen, until you Calculate and settle it once more.
+
+That's the whole lifecycle. There's no grace period, no countdown to a lock, and no "admin override" — settling the cycle is the single, deliberate step that marks bills paid, and the snapshot is the protection. (Nothing is logged or audit-trailed.)
 
 ---
 
 ## When people move in or out
 
-- **Someone moves in:** the PIC adds them as a housemate; they join with the link and start marking days. They only affect bills from then on.
-- **Someone moves out:** the PIC **soft-removes** them. They disappear from new bills but **stay attached to past bills**, so old splits still add up correctly. Nothing is ever truly deleted.
+- **Someone moves in:** the PIC adds them as a housemate; they join with the link and start marking days. They only count toward a bill if they were actually home during that bill's period, so they naturally affect bills from then on, not earlier ones.
+- **Someone moves out:** the PIC **soft-removes** them. Removal is **forward-only and never rewrites the past.** A settled bill keeps its saved snapshot untouched, and an open bill still includes them wherever their recorded days overlap that bill's period — inclusion is decided by *were they home during this bill*, **not** by their current "active" status. So old splits keep reconciling exactly as before, and nothing is ever truly deleted.
 - **Worried about a leaver still having the link?** Regenerate the member code. Every old link stops working at once, and the PIC shares a fresh one with the people still in the house.
 
 ---
 
 ## Exporting your records
 
-You can download your house's records as a spreadsheet, in two flavours:
-- **Latest** — just the most recent bill's split.
-- **Full history** — every bill on record.
+You can download your house's records as a **CSV file** (opens in Excel, Google Sheets, Numbers — anything), in two flavours:
+- **Latest** — the most recent cycle that has bills, with all of its bills.
+- **Full history** — every cycle, each as its own little table.
 
-The spreadsheet includes **live formulas**, not just final numbers — so anyone can open it, see the maths working itself out, change an input, and watch it recalculate. It's the same "check it yourself" principle, in spreadsheet form.
+The file holds the **final, already-computed numbers** — one table per cycle, with each person's days and share per utility and their combined total — exactly as the app shows them on screen. It's plain CSV: **no live formulas and no special spreadsheet app required.** (If you want to check the maths, the [worked example](#the-maths-in-full) and the README show exactly how each number is produced.)
 
 ---
 
@@ -231,7 +238,7 @@ You were marked as home for none of the days inside that bill's period (you were
 That's expected — rounding leaves a small leftover on purpose, which the app shows to the PIC to deal with. See [Rounding](#rounding) below.
 
 **"It won't let me change my days."**
-The days you're trying to edit fall inside the period of a bill that's already been marked **paid**. Settled bills are frozen so the split can't change after the fact. If it's a genuine mistake, the PIC would need to reopen that bill (set it back to open) before the days can be edited.
+This is uncommon. A settled bill is frozen by a saved **snapshot**, so you can usually still edit days that overlap it — the edit just won't change that already-settled bill. The app only *blocks* an edit in the rare case of a settled bill that has **no** saved snapshot, where the change really could shift a result that's already been paid. If you genuinely need to fix a settled bill, the PIC can **reopen** it — that makes it editable again and brings its whole cycle back to the active screen.
 
 **"I lost the admin code."**
 There's no recovery if nobody holds it. The house can still be viewed but not run. This is why saving codes at setup matters — see [Being the PIC](#being-the-pic).
