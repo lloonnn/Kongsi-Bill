@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Bill, DateRange } from './types';
 import { useApp } from './store';
 import { isInPeriod, presentDaysFromRanges, rangesFromPresentDays } from './calc';
+import { billFreezesPresence, isPresenceDayLocked } from './presenceLock';
 
 function fmtKey(y: number, m: number, d: number): string {
   return `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
@@ -61,10 +62,10 @@ export function Calendar({
   const seed = (): Set<string> => {
     if (!member) return new Set();
     if (member.presence.length === 0) {
-      // Default to present: pre-select every EDITABLE day. Days inside a
-      // non-draft (locked) bill are skipped — they can't be tapped, and
-      // pre-selecting them would re-send them on save and trip the Worker's
-      // paid-period 409.
+      // Default to present: pre-select every OPEN (draft) bill's days. Settled
+      // bills are skipped here — default-to-present is about bills still being
+      // worked on, not back-filling closed ones. (A still-mutable settled bill's
+      // days also stay locked below; see presenceLock.)
       const s = new Set<string>();
       for (const b of bills) {
         if (b.status !== 'draft') continue;
@@ -116,12 +117,14 @@ export function Calendar({
   const daysInMonth = new Date(view.year, view.month + 1, 0).getDate();
 
   const dayInPeriod = (key: string) => bills.some((b) => isInPeriod(key, b));
-  // A day inside a PAID bill's period is locked (final) — its split is settled,
-  // so it can't be edited without the admin reopening that bill.
-  const dayLocked = (key: string) =>
-    bills.some((b) => b.status !== 'draft' && isInPeriod(key, b));
+  // A day is locked only if it falls in a SETTLED bill whose split is still
+  // mutable — a paid bill with NO snapshot (see presenceLock, which mirrors the
+  // Worker's presenceHitsLock). A paid bill WITH a snapshot is already frozen, so
+  // its days stay editable — letting a different cycle's overlapping bill use
+  // them while the settled split is untouched.
+  const dayLocked = (key: string) => isPresenceDayLocked(bills, key);
   const dayEditable = (key: string) => dayInPeriod(key) && !dayLocked(key);
-  const hasLocked = bills.some((b) => b.status !== 'draft');
+  const hasLocked = bills.some(billFreezesPresence);
 
   const toggle = (key: string) =>
     setPresent((prev) => {
