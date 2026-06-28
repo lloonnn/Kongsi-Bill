@@ -9,7 +9,16 @@
 // The admin code can do anything a member can, so it is also accepted on member
 // endpoints; callers pass whichever code they hold.
 
-import type { Bill, BillStatus, DateRange, HouseState, Member, PaidSnapshotEntry } from './types';
+import type {
+  Bill,
+  BillStatus,
+  Cycle,
+  CycleStatus,
+  DateRange,
+  HouseState,
+  Member,
+  PaidSnapshotEntry,
+} from './types';
 
 /**
  * Base URL of the API. The frontend and the Worker are now served from the same
@@ -74,9 +83,19 @@ export interface CreatedHouse {
   created_at: string;
 }
 
+export interface CycleInput {
+  /** Provide to update an existing cycle (rename / finalize); omit to create one. */
+  cycle_id?: string;
+  display_name: string;
+  /** Defaults to 'open' on the Worker when omitted. */
+  status?: CycleStatus;
+}
+
 export interface BillInput {
   /** Provide to update an existing bill; omit to create a new one. */
   bill_id?: string;
+  /** The cycle this bill belongs to (migration 0005) — required. */
+  cycle_id: string;
   utility_label: string;
   amount: number;
   period_start: string;
@@ -146,6 +165,15 @@ export function setPresence(
     `/api/house/${encodeURIComponent(houseId)}/member/${encodeURIComponent(memberId)}/presence`,
     { method: 'PUT', body: { ranges }, memberCode: codes.memberCode, adminCode: codes.adminCode }
   );
+}
+
+/** POST /api/house/:id/cycle — create or update a cycle incl. status (auth: admin). */
+export function upsertCycle(houseId: string, cycle: CycleInput, adminCode: string): Promise<Cycle> {
+  return request(`/api/house/${encodeURIComponent(houseId)}/cycle`, {
+    method: 'POST',
+    body: cycle,
+    adminCode,
+  });
 }
 
 /** POST /api/house/:id/bill — create or update a bill incl. status (auth: admin). */

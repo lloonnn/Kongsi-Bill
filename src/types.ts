@@ -65,8 +65,34 @@ export interface PaidSnapshotEntry {
 /** The full set of per-person shares frozen at the moment a bill is settled. */
 export type PaidSnapshot = PaidSnapshotEntry[];
 
+/**
+ * Cycle lifecycle label (migration 0005):
+ *   open      — the admin is still adding/editing this period's bills.
+ *   finalized — Calculate has been run and the cycle is closed/filed.
+ * A label only; like bill status it never gates storage in the Worker.
+ */
+export type CycleStatus = 'open' | 'finalized';
+
+/**
+ * A billing cycle (migration 0005): an explicit, admin-named period (e.g.
+ * "June 2026") that groups that period's bills. Calculate acts on ONE cycle;
+ * different cycles are fully independent, so two cycles may carry overlapping
+ * dates without colliding. Replaces the old implicit "group bills by period_end
+ * month" model.
+ */
+export interface Cycle {
+  cycle_id: string;
+  /** Admin-typed display name, e.g. "June 2026". */
+  display_name: string;
+  status: CycleStatus;
+  /** YYYY-MM-DD the cycle was created. */
+  created_at: string;
+}
+
 export interface Bill {
   bill_id: string;
+  /** The cycle this bill belongs to (migration 0005). */
+  cycle_id: string;
   /** Single free-text label, e.g. "Electricity", "Water", or anything typed. */
   utility_label: string;
   amount: number;
@@ -100,5 +126,7 @@ export interface HouseState {
   member_code: string;
   created_at: string;
   members: Member[];
+  /** Billing cycles for this house (migration 0005); bills reference these. */
+  cycles: Cycle[];
   bills: Bill[];
 }

@@ -1,4 +1,4 @@
-import type { Bill, DateRange, Member, RoundingConfig } from './types';
+import type { Bill, Cycle, DateRange, Member, RoundingConfig } from './types';
 
 // NOTE: this file keeps the prototype's split + rounding algorithm exactly —
 // day-weighting, largest-remainder cent allocation, reconciliation messages.
@@ -506,6 +506,39 @@ export function groupBillsByMonth(bills: Bill[]): MonthGroup[] {
       bills: bs,
       total: bs.reduce((s, x) => s + x.amount, 0),
     }));
+}
+
+export interface CycleGroup {
+  cycle: Cycle;
+  bills: Bill[];
+  /** Combined amount paid to the landlord for this cycle. */
+  total: number;
+}
+
+/**
+ * Group a house's bills by their explicit cycle (migration 0005) — the model
+ * that replaces groupBillsByMonth's implicit "by the month the period ends".
+ * Calculate then operates on ONE CycleGroup's bills: feed `group.bills` straight
+ * into calculate()/calculateCombined() (unchanged — the split maths never sees
+ * another cycle's bills). Cycles are returned in the order given; a bill whose
+ * cycle_id matches no cycle is dropped (the FK makes this impossible in practice,
+ * but the grouping stays defensive rather than inventing an orphan bucket).
+ */
+export function groupBillsByCycle(bills: Bill[], cycles: Cycle[]): CycleGroup[] {
+  const byCycle = new Map<string, Bill[]>();
+  for (const b of bills) {
+    const list = byCycle.get(b.cycle_id);
+    if (list) list.push(b);
+    else byCycle.set(b.cycle_id, [b]);
+  }
+  return cycles.map((cycle) => {
+    const cycleBills = byCycle.get(cycle.cycle_id) ?? [];
+    return {
+      cycle,
+      bills: cycleBills,
+      total: cycleBills.reduce((s, x) => s + x.amount, 0),
+    };
+  });
 }
 
 export function formatPeriod(bill: Bill): string {

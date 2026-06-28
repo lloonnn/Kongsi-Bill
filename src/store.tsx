@@ -244,6 +244,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           member_code: created.member_code,
           created_at: created.created_at,
           members: [],
+          cycles: [],
           bills: [],
         });
         setCurrentMemberId(null);
@@ -360,6 +361,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         } else {
           bill = {
             bill_id: input.bill_id ?? 'bill-' + Date.now(),
+            cycle_id: input.cycle_id,
             utility_label: input.utility_label,
             amount: input.amount,
             period_start: input.period_start,
@@ -406,6 +408,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             session.houseId,
             {
               bill_id: next.bill_id,
+              cycle_id: next.cycle_id,
               utility_label: next.utility_label,
               amount: next.amount,
               period_start: next.period_start,
@@ -442,6 +445,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
               session.houseId,
               {
                 bill_id: b.bill_id,
+                cycle_id: b.cycle_id,
                 utility_label: b.utility_label,
                 amount: b.amount,
                 period_start: b.period_start,

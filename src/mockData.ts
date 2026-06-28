@@ -58,9 +58,26 @@ export const initialHouse: HouseState = {
       ],
     },
   ],
+  // Bills are grouped into explicit, admin-named cycles (migration 0005). The
+  // January cycle is finalized & filed; the current cycle is still open.
+  cycles: [
+    {
+      cycle_id: 'cycle-jan',
+      display_name: 'January 2026',
+      status: 'finalized',
+      created_at: '2026-01-01',
+    },
+    {
+      cycle_id: 'cycle-jun',
+      display_name: 'June 2026',
+      status: 'open',
+      created_at: '2026-06-01',
+    },
+  ],
   bills: [
     {
       bill_id: 'bill-jan-elec',
+      cycle_id: 'cycle-jan',
       utility_label: 'Electricity',
       amount: 100,
       period_start: '2026-01-01',
@@ -70,6 +87,7 @@ export const initialHouse: HouseState = {
     },
     {
       bill_id: 'bill-open-elec',
+      cycle_id: 'cycle-jun',
       utility_label: 'Electricity',
       amount: 142.6,
       period_start: '2026-05-16',
@@ -79,6 +97,7 @@ export const initialHouse: HouseState = {
     },
     {
       bill_id: 'bill-open-water',
+      cycle_id: 'cycle-jun',
       utility_label: 'Water',
       amount: 58.4,
       period_start: '2026-06-01',

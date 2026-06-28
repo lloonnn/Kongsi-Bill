@@ -9,8 +9,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { calculate, calculateCombined, NO_ROUNDING } from './calc.ts';
-import type { Bill, Member, PaidSnapshotEntry } from './types.ts';
+import { calculate, calculateCombined, groupBillsByCycle, NO_ROUNDING } from './calc.ts';
+import type { Bill, Cycle, Member, PaidSnapshotEntry } from './types.ts';
 
 function member(
   partial: Partial<Member> & { member_id: string; name: string }
@@ -22,10 +22,20 @@ function bill(
   partial: Partial<Bill> & { bill_id: string; period_start: string; period_end: string }
 ): Bill {
   return {
+    cycle_id: 'cycle-default',
     utility_label: 'Electricity',
     amount: 100,
     status: 'draft',
     paid_snapshot: null,
+    ...partial,
+  };
+}
+
+function cycle(partial: Partial<Cycle> & { cycle_id: string }): Cycle {
+  return {
+    display_name: partial.cycle_id,
+    status: 'open',
+    created_at: '2026-01-01',
     ...partial,
   };
 }
@@ -125,4 +135,85 @@ test('(a-combined) calculateCombined includes a soft-removed member present duri
   assert.ok(dana, 'soft-removed Dana should be included — she was present in March');
   assert.equal(dana.components[0].days, 31); // present all 31 days of March
   assert.equal(dana.amount, 50); // 31/62 × $100
+});
+
+// ---------------------------------------------------------------------------
+// Per-cycle grouping (migration 0005). Calculate must act on ONE cycle's bills.
+// Two cycles with OVERLAPPING dates must not collide: each is computed over only
+// its own bills, so feeding groupBillsByCycle's output into the unchanged calc
+// keeps them independent.
+// ---------------------------------------------------------------------------
+
+const juneCycle = cycle({ cycle_id: 'cycle-jun', display_name: 'June 2026' });
+const julyCycle = cycle({ cycle_id: 'cycle-jul', display_name: 'July 2026' });
+
+// June and July deliberately share dates (25–30 June) to prove cycles isolate.
+const juneElec = bill({
+  bill_id: 'jun-elec',
+  cycle_id: 'cycle-jun',
+  amount: 90,
+  period_start: '2026-06-01',
+  period_end: '2026-06-30',
+});
+const juneWater = bill({
+  bill_id: 'jun-water',
+  cycle_id: 'cycle-jun',
+  amount: 30,
+  period_start: '2026-06-01',
+  period_end: '2026-06-30',
+});
+const julyElec = bill({
+  bill_id: 'jul-elec',
+  cycle_id: 'cycle-jul',
+  amount: 200,
+  period_start: '2026-06-25', // overlaps June's cycle on the calendar
+  period_end: '2026-07-25',
+});
+
+test('(e) groupBillsByCycle buckets bills by cycle_id and never mixes cycles', () => {
+  const groups = groupBillsByCycle(
+    [juneElec, julyElec, juneWater],
+    [juneCycle, julyCycle]
+  );
+  assert.equal(groups.length, 2);
+
+  const june = groups.find((g) => g.cycle.cycle_id === 'cycle-jun');
+  const july = groups.find((g) => g.cycle.cycle_id === 'cycle-jul');
+  assert.ok(june && july);
+  assert.deepEqual(
+    june.bills.map((b) => b.bill_id).sort(),
+    ['jun-elec', 'jun-water']
+  );
+  assert.equal(june.total, 120); // 90 + 30, July's $200 not pulled in
+  assert.deepEqual(july.bills.map((b) => b.bill_id), ['jul-elec']);
+  assert.equal(july.total, 200);
+});
+
+test('(f) calculate over one cycle ignores another cycle’s bills entirely', () => {
+  // Combine ONLY the June cycle. The overlapping July bill must not appear.
+  const [june] = groupBillsByCycle([juneElec, juneWater, julyElec], [juneCycle]);
+  const calc = calculateCombined(june.bills, [alex], NO_ROUNDING);
+  assert.equal(calc.grandTotal, 120); // 90 + 30 — July's $200 excluded
+  assert.equal(calc.bills.length, 2);
+  assert.ok(!calc.bills.some((b) => b.bill_id === 'jul-elec'));
+});
+
+test('(g) overlapping dates across cycles do not collide — each cycle computes independently', () => {
+  // Same single member, same overlapping calendar window, two cycles. The July
+  // result must be unaffected by June's bills and vice versa.
+  const groups = groupBillsByCycle(
+    [juneElec, juneWater, julyElec],
+    [juneCycle, julyCycle]
+  );
+  const june = groups.find((g) => g.cycle.cycle_id === 'cycle-jun')!;
+  const july = groups.find((g) => g.cycle.cycle_id === 'cycle-jul')!;
+
+  const juneCalc = calculateCombined(june.bills, [alex], NO_ROUNDING);
+  const julyCalc = calculateCombined(july.bills, [alex], NO_ROUNDING);
+
+  // Sole participant pays each cycle's whole total — independently.
+  assert.equal(juneCalc.shares[0].amount, 120);
+  assert.equal(julyCalc.shares[0].amount, 200);
+  // The overlap on 25–30 June never double-counts or cross-contaminates.
+  assert.equal(juneCalc.grandTotal + julyCalc.grandTotal, 320);
 });

@@ -141,6 +141,33 @@ function mergeRanges(ranges: DateRange[]): DateRange[] {
   return out;
 }
 
+/**
+ * Freeze guard (re-scoped, migration 0005): whether a proposed set of presence
+ * ranges must be rejected because it would touch a still-mutable settled bill.
+ *
+ * The lock is keyed to the BILL that is settled, not a blanket calendar sweep:
+ * only a paid bill with NO paid_snapshot can block. A paid bill WITH a snapshot
+ * (migration 0004) renders that frozen split and never recalculates, so editing
+ * presence over its period cannot change what it displays — blocking it would
+ * only wrongly reject an overlapping bill in a DIFFERENT cycle (cycles may share
+ * dates). Money-protection is intact either way: a settled split is immutable —
+ * frozen by its snapshot, or, for any legacy snapshot-less paid bill, frozen by
+ * this date guard. We never weaken the lock; we just stop it firing where it has
+ * nothing left to protect. Two ranges overlap iff start <= other.end AND
+ * end >= other.start. Pure interval bookkeeping — no day-count, no split (§10.1).
+ */
+export function presenceHitsLock(
+  ranges: DateRange[],
+  paidBills: { period_start: string; period_end: string; paid_snapshot: string | null }[]
+): boolean {
+  return ranges.some((r) =>
+    paidBills.some(
+      (b) =>
+        b.paid_snapshot === null && r.start <= b.period_end && r.end >= b.period_start
+    )
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Auth (blueprint §5.2) — access by code only, no accounts.
 //   member code  → member endpoints (may travel in the join link, so it is
@@ -309,6 +336,13 @@ export default {
         return confirmDays(env, houseId, seg[3]);
       }
 
+      // POST /house/:id/cycle — create or update a cycle, incl. status (auth: admin).
+      if (method === 'POST' && seg.length === 3 && seg[2] === 'cycle') {
+        const guard = requireAdmin(house, url, request, body);
+        if (guard) return guard;
+        return upsertCycle(env, houseId, body);
+      }
+
       // POST /house/:id/bill — create or update a bill, incl. status (auth: admin).
       if (method === 'POST' && seg.length === 3 && seg[2] === 'bill') {
         const guard = requireAdmin(house, url, request, body);
@@ -385,12 +419,20 @@ interface RangeRow {
 
 interface BillRow {
   bill_id: string;
+  cycle_id: string;
   utility_label: string;
   amount: number;
   period_start: string;
   period_end: string;
   status: string;
   paid_snapshot: string | null; // JSON text computed by the browser, or NULL
+}
+
+interface CycleRow {
+  cycle_id: string;
+  display_name: string;
+  status: string;
+  created_at: string;
 }
 
 async function readHouse(env: Env, house: HouseRow): Promise<Response> {
@@ -417,10 +459,18 @@ async function readHouse(env: Env, house: HouseRow): Promise<Response> {
 
   const bills = (
     await env.DB.prepare(
-      'SELECT bill_id, utility_label, amount, period_start, period_end, status, paid_snapshot FROM bills WHERE house_id = ? ORDER BY period_end DESC'
+      'SELECT bill_id, cycle_id, utility_label, amount, period_start, period_end, status, paid_snapshot FROM bills WHERE house_id = ? ORDER BY period_end DESC'
     )
       .bind(house.house_id)
       .all<BillRow>()
+  ).results;
+
+  const cycles = (
+    await env.DB.prepare(
+      'SELECT cycle_id, display_name, status, created_at FROM cycles WHERE house_id = ? ORDER BY created_at DESC, rowid DESC'
+    )
+      .bind(house.house_id)
+      .all<CycleRow>()
   ).results;
 
   const presenceByMember = new Map<string, DateRange[]>();
@@ -442,10 +492,19 @@ async function readHouse(env: Env, house: HouseRow): Promise<Response> {
       days_confirmed: m.days_confirmed === 1, // "my days are correct" readiness flag
       presence: presenceByMember.get(m.member_id) ?? [],
     })),
+    // Cycles group the bills for a billing period (migration 0005). Bills carry
+    // cycle_id so the client can scope Calculate to one cycle.
+    cycles: cycles.map((c) => ({
+      cycle_id: c.cycle_id,
+      display_name: c.display_name,
+      status: c.status,
+      created_at: c.created_at,
+    })),
     // paid_snapshot is stored as JSON text (the browser's computed split); parse
     // it back to an array for the client, or null if the bill has no snapshot.
     bills: bills.map((b) => ({
       bill_id: b.bill_id,
+      cycle_id: b.cycle_id,
       utility_label: b.utility_label,
       amount: b.amount,
       period_start: b.period_start,
@@ -516,25 +575,25 @@ async function setPresence(
 
   // Server-side lock for settled bills (real enforcement, not just the UI).
   // Presence isn't tied to a bill, so this is a DATE-OVERLAP check against the
-  // periods of this house's PAID bills — never a status lookup on a presence
-  // row. Only 'paid' (closed/settled) locks; 'draft' (open) bills never block.
-  // Two ranges overlap iff range.start <= bill.period_end AND range.end >=
-  // bill.period_start. If any incoming range overlaps any paid period we reject
-  // the WHOLE edit (predictable: nothing is written), no partial application.
-  // This is a validation guard, not a day-count or split — the no-maths
-  // principle (§10.1) is intact.
+  // periods of this house's PAID bills. Two ranges overlap iff range.start <=
+  // bill.period_end AND range.end >= bill.period_start; one hit rejects the
+  // WHOLE edit (predictable: nothing is written), no partial application. This
+  // is a validation guard, not a day-count or split — the no-maths principle
+  // (§10.1) is intact.
+  //
+  // The lock is keyed to the SETTLED BILL, not a blanket calendar sweep — see
+  // presenceHitsLock: only a paid bill that has NO snapshot can block. We pass
+  // every paid bill (with its snapshot flag) and let the predicate decide, so
+  // the whole rule lives in one pure, testable place.
   const paidBills = (
     await env.DB.prepare(
-      'SELECT period_start, period_end FROM bills WHERE house_id = ? AND status = ?'
+      'SELECT period_start, period_end, paid_snapshot FROM bills WHERE house_id = ? AND status = ?'
     )
       .bind(houseId, 'paid')
-      .all<{ period_start: string; period_end: string }>()
+      .all<{ period_start: string; period_end: string; paid_snapshot: string | null }>()
   ).results;
 
-  const hitsPaid = cleaned.some((r) =>
-    paidBills.some((b) => r.start <= b.period_end && r.end >= b.period_start)
-  );
-  if (hitsPaid) {
+  if (presenceHitsLock(cleaned, paidBills)) {
     return err(409, "Cannot edit days inside a settled (paid) bill's period");
   }
 
@@ -581,9 +640,61 @@ async function confirmDays(env: Env, houseId: string, memberId: string): Promise
   return json({ member_id: memberId, days_confirmed: true });
 }
 
+async function upsertCycle(env: Env, houseId: string, body: AnyBody): Promise<Response> {
+  const display_name = str(body?.display_name);
+  if (!display_name) return err(400, 'display_name is required');
+
+  const status = body?.status ?? 'open';
+  if (status !== 'open' && status !== 'finalized') {
+    // Lifecycle label only: open → finalized. Never gates storage (no maths, §10.1).
+    return err(400, "status must be 'open' or 'finalized'");
+  }
+
+  const cycleId = typeof body?.cycle_id === 'string' ? body.cycle_id : null;
+
+  if (cycleId) {
+    const existing = await env.DB.prepare(
+      'SELECT cycle_id, created_at FROM cycles WHERE cycle_id = ? AND house_id = ?'
+    )
+      .bind(cycleId, houseId)
+      .first<{ cycle_id: string; created_at: string }>();
+    if (!existing) return err(404, 'Cycle not found');
+
+    await env.DB.prepare(
+      'UPDATE cycles SET display_name = ?, status = ? WHERE cycle_id = ? AND house_id = ?'
+    )
+      .bind(display_name, status, cycleId, houseId)
+      .run();
+
+    return json({ cycle_id: cycleId, display_name, status, created_at: existing.created_at });
+  }
+
+  const cycle_id = randomId();
+  const created_at = today();
+  await env.DB.prepare(
+    'INSERT INTO cycles (cycle_id, house_id, display_name, status, created_at, schema_version) VALUES (?, ?, ?, ?, ?, 1)'
+  )
+    .bind(cycle_id, houseId, display_name, status, created_at)
+    .run();
+
+  return json({ cycle_id, display_name, status, created_at }, 201);
+}
+
 async function upsertBill(env: Env, houseId: string, body: AnyBody): Promise<Response> {
   const utility_label = str(body?.utility_label);
   if (!utility_label) return err(400, 'utility_label is required');
+
+  // A bill must belong to a cycle (migration 0005). Verify the cycle exists in
+  // THIS house before writing — the DB FK enforces it too, but an explicit check
+  // gives a clean 400/404 instead of a generic 500 on FK failure.
+  const cycle_id = str(body?.cycle_id);
+  if (!cycle_id) return err(400, 'cycle_id is required');
+  const cycle = await env.DB.prepare(
+    'SELECT cycle_id FROM cycles WHERE cycle_id = ? AND house_id = ?'
+  )
+    .bind(cycle_id, houseId)
+    .first<{ cycle_id: string }>();
+  if (!cycle) return err(404, 'Cycle not found');
 
   const amount = body?.amount;
   if (typeof amount !== 'number' || !Number.isFinite(amount) || amount <= 0) {
@@ -625,22 +736,22 @@ async function upsertBill(env: Env, houseId: string, body: AnyBody): Promise<Res
     if (!existing) return err(404, 'Bill not found');
 
     await env.DB.prepare(
-      'UPDATE bills SET utility_label = ?, amount = ?, period_start = ?, period_end = ?, status = ?, paid_snapshot = ? WHERE bill_id = ? AND house_id = ?'
+      'UPDATE bills SET cycle_id = ?, utility_label = ?, amount = ?, period_start = ?, period_end = ?, status = ?, paid_snapshot = ? WHERE bill_id = ? AND house_id = ?'
     )
-      .bind(utility_label, amount, period_start, period_end, status, snapshotText, billId, houseId)
+      .bind(cycle_id, utility_label, amount, period_start, period_end, status, snapshotText, billId, houseId)
       .run();
 
-    return json({ bill_id: billId, utility_label, amount, period_start, period_end, status, paid_snapshot: snapshot });
+    return json({ bill_id: billId, cycle_id, utility_label, amount, period_start, period_end, status, paid_snapshot: snapshot });
   }
 
   const bill_id = randomId();
   await env.DB.prepare(
-    'INSERT INTO bills (bill_id, house_id, utility_label, amount, period_start, period_end, status, paid_snapshot, schema_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)'
+    'INSERT INTO bills (bill_id, house_id, cycle_id, utility_label, amount, period_start, period_end, status, paid_snapshot, schema_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)'
   )
-    .bind(bill_id, houseId, utility_label, amount, period_start, period_end, status, snapshotText)
+    .bind(bill_id, houseId, cycle_id, utility_label, amount, period_start, period_end, status, snapshotText)
     .run();
 
-  return json({ bill_id, utility_label, amount, period_start, period_end, status, paid_snapshot: snapshot }, 201);
+  return json({ bill_id, cycle_id, utility_label, amount, period_start, period_end, status, paid_snapshot: snapshot }, 201);
 }
 
 async function removeBill(env: Env, houseId: string, billId: string): Promise<Response> {
