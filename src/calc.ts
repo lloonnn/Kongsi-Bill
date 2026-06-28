@@ -475,39 +475,6 @@ export function billIcon(bill: Pick<Bill, 'utility_label'>): string {
   return match ? match.icon : '🧾';
 }
 
-export interface MonthGroup {
-  key: string; // 'YYYY-MM'
-  label: string; // 'June 2026'
-  bills: Bill[];
-  total: number; // combined amount paid to the landlord that cycle
-}
-
-/**
- * Group bills into one combined bill per billing month (by the month each
- * period ends). A house pays the landlord one combined amount per cycle —
- * electricity + water + gas + anything else — so history is organised that way.
- */
-export function groupBillsByMonth(bills: Bill[]): MonthGroup[] {
-  const map = new Map<string, Bill[]>();
-  for (const b of bills) {
-    const key = b.period_end.slice(0, 7);
-    const list = map.get(key);
-    if (list) list.push(b);
-    else map.set(key, [b]);
-  }
-  return [...map.entries()]
-    .sort((a, b) => (a[0] < b[0] ? 1 : -1))
-    .map(([key, bs]) => ({
-      key,
-      label: new Date(key + '-01T00:00:00').toLocaleDateString('en-GB', {
-        month: 'long',
-        year: 'numeric',
-      }),
-      bills: bs,
-      total: bs.reduce((s, x) => s + x.amount, 0),
-    }));
-}
-
 export interface CycleGroup {
   cycle: Cycle;
   bills: Bill[];

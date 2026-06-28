@@ -7,11 +7,36 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import type { Bill, BillStatus, DateRange, HouseState, Member, PaidSnapshotEntry } from './types';
-import { initialAdminCode, initialHouse, TODAY } from './mockData';
+import type {
+  Bill,
+  BillStatus,
+  Cycle,
+  DateRange,
+  HouseState,
+  Member,
+  PaidSnapshotEntry,
+} from './types';
 import { calculate, NO_ROUNDING } from './calc';
 import * as api from './api';
-import type { BillInput } from './api';
+import type { BillInput, CycleInput } from './api';
+
+/** Today as YYYY-MM-DD (replaces the old fixed mock TODAY). */
+const TODAY = new Date().toISOString().slice(0, 10);
+
+/**
+ * A blank house for first run / cold boot, before a real one is created or
+ * joined. Shaped exactly like GET /house/:id so every screen renders empty
+ * states without special-casing. (Replaces the old offline demo seed.)
+ */
+const EMPTY_HOUSE: HouseState = {
+  house_id: '',
+  display_name: '',
+  member_code: '',
+  created_at: '',
+  members: [],
+  cycles: [],
+  bills: [],
+};
 
 // ---------------------------------------------------------------------------
 // Routing — a tiny stack-based router (no react-router; this is a prototype).
@@ -26,6 +51,7 @@ export type RouteName =
   | 'admin-dashboard'
   | 'admin-my-days'
   | 'admin-edit-days'
+  | 'admin-add-cycle'
   | 'admin-add-bill'
   | 'admin-combined'
   | 'admin-history'
@@ -39,6 +65,8 @@ export interface Route {
   name: RouteName;
   billId?: string;
   memberId?: string;
+  /** Which cycle an add-bill / calculate action targets (migration 0005). */
+  cycleId?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -138,25 +166,26 @@ interface AppContextValue {
   setPresence: (memberId: string, ranges: DateRange[]) => Promise<void>;
   /** Mark a member's days as reviewed-correct (readiness). */
   confirmDays: (memberId: string) => Promise<void>;
+  /** Create or rename/finalize a cycle (migration 0005). Returns its cycle_id. */
+  upsertCycle: (input: CycleInput) => Promise<string>;
   upsertBill: (input: BillInput) => Promise<string>;
   deleteBill: (billId: string) => Promise<void>;
   setBillStatus: (billId: string, status: BillStatus) => Promise<void>;
-  /** Mark paid (or reopen) every bill at once — sets all to the given status. */
-  setAllBillsStatus: (status: BillStatus) => Promise<void>;
+  /**
+   * Calculate/finalize ONE cycle: settle (mark paid + freeze the split of) every
+   * draft bill in that cycle and flip the cycle to 'finalized'. Acts only on the
+   * given cycle's bills — never across cycles.
+   */
+  finalizeCycle: (cycleId: string) => Promise<void>;
   regenerateMemberCode: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [house, setHouse] = useState<HouseState>(initialHouse);
+  const [house, setHouse] = useState<HouseState>(EMPTY_HOUSE);
   const [session, setSession] = useState<Session | null>(() => loadSession());
-  const [adminCode, setAdminCode] = useState<string | null>(() => {
-    const s = loadSession();
-    // A persisted real session carries its own (possibly null) admin code. Only
-    // the offline demo seed gets the demo admin code.
-    return s ? s.adminCode : initialAdminCode;
-  });
+  const [adminCode, setAdminCode] = useState<string | null>(() => loadSession()?.adminCode ?? null);
   const [stack, setStack] = useState<Route[]>(() =>
     isJoinLink()
       ? [{ name: 'member-join' }]
@@ -164,7 +193,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         ? [{ name: 'admin-manage' }]
         : [{ name: 'hub' }]
   );
-  const [currentMemberId, setCurrentMemberId] = useState<string | null>('m-bob');
+  const [currentMemberId, setCurrentMemberId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -353,6 +382,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }));
       });
 
+    const upsertCycle = (input: CycleInput) =>
+      run(async () => {
+        let cycle: Cycle;
+        if (connected && session) {
+          cycle = await api.upsertCycle(session.houseId, input, requireAdmin());
+        } else {
+          cycle = {
+            cycle_id: input.cycle_id ?? 'cycle-' + Date.now(),
+            display_name: input.display_name,
+            status: input.status ?? 'open',
+            created_at: TODAY,
+          };
+        }
+        setHouse((h) => {
+          const exists = h.cycles.some((c) => c.cycle_id === cycle.cycle_id);
+          return {
+            ...h,
+            cycles: exists
+              ? h.cycles.map((c) => (c.cycle_id === cycle.cycle_id ? cycle : c))
+              : [cycle, ...h.cycles],
+          };
+        });
+        return cycle.cycle_id;
+      });
+
     const upsertBill = (input: BillInput) =>
       run(async () => {
         let bill: Bill;
@@ -430,14 +484,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       });
 
-    const setAllBillsStatus = (status: BillStatus) =>
+    // Calculate/finalize ONE cycle: settle every draft bill in it (freezing each
+    // split) and flip the cycle to 'finalized'. Scoped to the cycle's own bills —
+    // a different cycle's bills are never touched, even if dates overlap.
+    const finalizeCycle = (cycleId: string) =>
       run(async () => {
-        const targets = house.bills.filter((b) => b.status !== status);
-        // Freeze each settled bill's split (one calc per bill); clear it for any
-        // other status. Computed once here and reused for both the API write and
-        // the local state update so the snapshot is identical in both.
+        const cycle = house.cycles.find((c) => c.cycle_id === cycleId);
+        const targets = house.bills.filter(
+          (b) => b.cycle_id === cycleId && b.status !== 'paid'
+        );
+        // Freeze each bill's split once (same calc the table renders), reused for
+        // both the API write and the local update so the snapshots match exactly.
         const snapshots = new Map<string, PaidSnapshotEntry[] | null>(
-          targets.map((b) => [b.bill_id, status === 'paid' ? snapshotFor(b) : null])
+          targets.map((b) => [b.bill_id, snapshotFor(b)])
         );
         if (connected && session) {
           for (const b of targets) {
@@ -450,9 +509,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 amount: b.amount,
                 period_start: b.period_start,
                 period_end: b.period_end,
-                status,
+                status: 'paid',
                 paid_snapshot: snapshots.get(b.bill_id) ?? null,
               },
+              requireAdmin()
+            );
+          }
+          if (cycle) {
+            await api.upsertCycle(
+              session.houseId,
+              { cycle_id: cycleId, display_name: cycle.display_name, status: 'finalized' },
               requireAdmin()
             );
           }
@@ -460,9 +526,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setHouse((h) => ({
           ...h,
           bills: h.bills.map((b) =>
-            b.status === status
-              ? b
-              : { ...b, status, paid_snapshot: snapshots.get(b.bill_id) ?? null }
+            b.cycle_id === cycleId && b.status !== 'paid'
+              ? { ...b, status: 'paid', paid_snapshot: snapshots.get(b.bill_id) ?? null }
+              : b
+          ),
+          cycles: h.cycles.map((c) =>
+            c.cycle_id === cycleId ? { ...c, status: 'finalized' } : c
           ),
         }));
       });
@@ -501,10 +570,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       softRemoveMember,
       setPresence,
       confirmDays,
+      upsertCycle,
       upsertBill,
       deleteBill,
       setBillStatus,
-      setAllBillsStatus,
+      finalizeCycle,
       regenerateMemberCode,
     };
   }, [house, stack, route, currentMemberId, adminCode, connected, session, codes, error, busy, run]);

@@ -1,6 +1,6 @@
 import { useApp } from '../store';
 import { Avatar, Frame, ScreenNav, StatusPill, TopBar } from '../ui';
-import { billIcon, billLabel, formatPeriod, money } from '../calc';
+import { billIcon, billLabel, formatPeriod, groupBillsByCycle, money } from '../calc';
 import type { Bill } from '../types';
 
 /** Admin house home — bill list + quick actions into every admin tool. */
@@ -43,60 +43,100 @@ export function AdminDashboard() {
   // One Bill screen handles everything (split, edit, mark paid, delete).
   const openBill = (b: Bill) => go({ name: 'admin-bill-detail', billId: b.bill_id });
 
+  // Bills are grouped under their explicit cycle (migration 0005); Calculate acts
+  // on one cycle at a time — never across cycles.
+  const groups = groupBillsByCycle(house.bills, house.cycles);
+
   return (
     <Frame>
       <TopBar icon="LD" name={house.display_name} sub="House overview" admin />
       <div className="screen gap">
         <ScreenNav />
 
-        {/* Step 1 — the bills for this cycle come first. */}
+        {/* Step 1 — bills, grouped by billing cycle. */}
         <div className="card admin">
           <div className="row-between" style={{ marginBottom: 4 }}>
             <div className="working-title" style={{ marginBottom: 0 }}>
-              1 · Bills
+              1 · Bills by cycle
             </div>
-            <button className="copy-btn" onClick={() => go({ name: 'admin-add-bill' })}>
-              + Add bill
+            <button className="copy-btn" onClick={() => go({ name: 'admin-add-cycle' })}>
+              + New cycle
             </button>
           </div>
-          {house.bills.length === 0 && (
+          {house.cycles.length === 0 && (
             <p className="muted-note" style={{ marginBottom: 8 }}>
-              Start here — add this cycle’s bills (electricity, water…).
+              Start here — create a cycle (e.g. “June 2026”), then add its bills
+              (electricity, water…).
             </p>
           )}
-
-          {house.bills.map((b) => {
-            return (
-              <button key={b.bill_id} className="list-row" onClick={() => openBill(b)}>
-                <div className="person-left">
-                  <div className="bill-icon" style={{ width: 38, height: 38, fontSize: 17 }}>
-                    {billIcon(b)}
-                  </div>
-                  <div>
-                    <div className="lr-title">{billLabel(b)}</div>
-                    <div className="lr-sub">{formatPeriod(b)}</div>
-                  </div>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div className="lr-amount tnum">{money(b.amount)}</div>
-                  <div style={{ marginTop: 6 }}>
-                    <StatusPill status={b.status} />
-                  </div>
-                </div>
-              </button>
-            );
-          })}
-
-          {house.bills.length > 0 && (
-            <button
-              className="btn-primary"
-              style={{ marginTop: 14 }}
-              onClick={() => go({ name: 'admin-combined' })}
-            >
-              ✅ Finalize &amp; announce the bills
-            </button>
-          )}
         </div>
+
+        {groups.map((g) => {
+          const hasDrafts = g.bills.some((b) => b.status === 'draft');
+          return (
+            <div className="card admin" key={g.cycle.cycle_id}>
+              <div className="row-between" style={{ marginBottom: 8 }}>
+                <div>
+                  <div className="working-title" style={{ marginBottom: 2 }}>
+                    {g.cycle.display_name}
+                  </div>
+                  <div className="lr-sub">
+                    {g.bills.length} bill{g.bills.length === 1 ? '' : 's'} ·{' '}
+                    <span className="tnum">{money(g.total)}</span>
+                  </div>
+                </div>
+                <span className={`status-pill ${g.cycle.status === 'finalized' ? 'confirmed' : 'draft'}`}>
+                  {g.cycle.status === 'finalized' ? 'finalized' : 'open'}
+                </span>
+              </div>
+
+              {g.bills.length === 0 && (
+                <p className="muted-note" style={{ marginBottom: 8 }}>
+                  No bills in this cycle yet.
+                </p>
+              )}
+
+              {g.bills.map((b) => (
+                <button key={b.bill_id} className="list-row" onClick={() => openBill(b)}>
+                  <div className="person-left">
+                    <div className="bill-icon" style={{ width: 38, height: 38, fontSize: 17 }}>
+                      {billIcon(b)}
+                    </div>
+                    <div>
+                      <div className="lr-title">{billLabel(b)}</div>
+                      <div className="lr-sub">{formatPeriod(b)}</div>
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div className="lr-amount tnum">{money(b.amount)}</div>
+                    <div style={{ marginTop: 6 }}>
+                      <StatusPill status={b.status} />
+                    </div>
+                  </div>
+                </button>
+              ))}
+
+              <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+                <button
+                  className="btn-secondary"
+                  style={{ marginTop: 0 }}
+                  onClick={() => go({ name: 'admin-add-bill', cycleId: g.cycle.cycle_id })}
+                >
+                  + Add bill
+                </button>
+                {hasDrafts && (
+                  <button
+                    className="btn-primary"
+                    style={{ marginTop: 0 }}
+                    onClick={() => go({ name: 'admin-combined', cycleId: g.cycle.cycle_id })}
+                  >
+                    🧮 Calculate
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
 
         {/* Step 2 — then mark your own days. */}
         <div className="card admin">

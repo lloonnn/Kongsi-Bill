@@ -5,12 +5,12 @@
 // workbook with live formulas; the product owner deliberately traded that away
 // to drop the SheetJS dependency and ship plain CSV. No formulas remain.)
 //
-// REUSE NOTE (Phase 6 recon §A): periods are grouped with the SAME logic the
-// history screens use — groupBillsByMonth() from calc.ts — imported and called
-// directly. It buckets bills by the month each period ENDS and orders periods
-// most-recent-first; the export inherits both decisions verbatim. The only thing
-// computed on top is each period's [earliest start, latest end] span, used purely
-// as the period's header label. (Grouping is now SETTLED per the PO.)
+// REUSE NOTE: periods are grouped with the SAME logic the history screens use —
+// groupBillsByCycle() from calc.ts (migration 0005) — imported and called
+// directly. Bills are grouped under their explicit, admin-named cycle; cycles
+// come back newest-first (readHouse order), and the export inherits that order.
+// Each table is headed by the cycle's name plus its [earliest start, latest end]
+// span across that cycle's bills. (Replaces the old by-month grouping.)
 //
 // CALC NOTE (Phase 6 recon §B): per-person days/fees for draft & confirmed bills
 // come straight from calc.ts calculate().shares — the SAME cent-allocation the
@@ -20,7 +20,7 @@
 // still flagged (out of scope for Phase 6). The Worker never calculates.
 
 import type { Bill, HouseState } from './types';
-import { billLabel, calculate, groupBillsByMonth, NO_ROUNDING } from './calc';
+import { billLabel, calculate, groupBillsByCycle, NO_ROUNDING, type CycleGroup } from './calc';
 
 /** DD/MM/YYYY for a YYYY-MM-DD key. */
 function fmtDate(key: string): string {
@@ -103,13 +103,14 @@ function toRow(fields: Field[]): string {
 }
 
 /**
- * Build the CSV lines for ONE period's table:
- *   Period: <span>
+ * Build the CSV lines for ONE cycle's table:
+ *   Cycle: <name> (<span>)
  *   No | Name | <U> Days | <U> Fees | ... | Total
  *   <one row per member>
  *   (grand total row — sums ONLY the Total column)
  */
-function periodLines(bills: Bill[], house: HouseState): string[] {
+function cycleLines(group: CycleGroup, house: HouseState): string[] {
+  const bills = group.bills;
   // Left-to-right utility order: by period start, then label, for stability.
   const ordered = bills.slice().sort((a, b) =>
     a.period_start < b.period_start
@@ -143,7 +144,7 @@ function periodLines(bills: Bill[], house: HouseState): string[] {
   }
 
   const lines: string[] = [];
-  lines.push(toRow([`Period: ${periodSpanLabel(ordered)}`]));
+  lines.push(toRow([`Cycle: ${group.cycle.display_name} (${periodSpanLabel(ordered)})`]));
 
   // Header: No | Name | <U> Days | <U> Fees | ... | Total
   const header: Field[] = ['No', 'Name'];
@@ -183,9 +184,9 @@ function periodLines(bills: Bill[], house: HouseState): string[] {
   return lines;
 }
 
-/** Join period blocks into a single CSV document, blank line between tables. */
-function buildCsv(house: HouseState, periods: Bill[][]): string {
-  return periods.map((bills) => periodLines(bills, house).join('\r\n')).join('\r\n\r\n');
+/** Join cycle blocks into a single CSV document, blank line between tables. */
+function buildCsv(house: HouseState, groups: CycleGroup[]): string {
+  return groups.map((g) => cycleLines(g, house).join('\r\n')).join('\r\n\r\n');
 }
 
 /** Trigger a browser download of `text` as a .csv file. */
@@ -201,16 +202,21 @@ function downloadCsv(filename: string, text: string): void {
   URL.revokeObjectURL(url);
 }
 
-/** Export only the most recent billing period (by the grouping's own order). */
+/**
+ * Export the latest cycle — the newest cycle that has any bills, with ALL of its
+ * bills (PO-confirmed). Cycles come back newest-first, so that's the first
+ * non-empty group; empty cycles (named but no bills yet) are skipped so the file
+ * is never blank.
+ */
 export function exportLatest(house: HouseState): void {
-  const groups = groupBillsByMonth(house.bills);
+  const groups = groupBillsByCycle(house.bills, house.cycles).filter((g) => g.bills.length > 0);
   if (groups.length === 0) throw new Error('No bills to export yet.');
-  downloadCsv('kongsi-bill-latest.csv', buildCsv(house, [groups[0].bills]));
+  downloadCsv('kongsi-bill-latest.csv', buildCsv(house, [groups[0]]));
 }
 
-/** Export every billing period, each as its own labelled table. */
+/** Export every cycle that has bills, each as its own labelled table. */
 export function exportHistory(house: HouseState): void {
-  const groups = groupBillsByMonth(house.bills);
+  const groups = groupBillsByCycle(house.bills, house.cycles).filter((g) => g.bills.length > 0);
   if (groups.length === 0) throw new Error('No bills to export yet.');
-  downloadCsv('kongsi-bill-history.csv', buildCsv(house, groups.map((g) => g.bills)));
+  downloadCsv('kongsi-bill-history.csv', buildCsv(house, groups));
 }

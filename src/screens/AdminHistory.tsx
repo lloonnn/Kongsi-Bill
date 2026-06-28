@@ -1,16 +1,17 @@
 import { useApp } from '../store';
 import { ExtrapolatedTag, Frame, ScreenNav, TopBar } from '../ui';
 import { CombinedBillCard } from '../CombinedBillCard';
-import { groupBillsByMonth } from '../calc';
+import { groupBillsByCycle } from '../calc';
 
 /**
- * History as combined bills — one per billing month. Each combined bill shows
- * the single amount paid to the landlord and how it's composed (each utility ×
- * each person). Tap a utility to open its working. Extrapolated screen.
+ * History as combined bills — one per billing cycle (migration 0005). Each cycle
+ * shows the single amount paid to the landlord and how it's composed (each
+ * utility × each person). Tap a utility to open its working. Extrapolated screen.
  */
 export function AdminHistory() {
   const { house, go } = useApp();
-  const groups = groupBillsByMonth(house.bills);
+  // Only cycles that actually have bills appear in history.
+  const groups = groupBillsByCycle(house.bills, house.cycles).filter((g) => g.bills.length > 0);
 
   return (
     <Frame>
@@ -29,7 +30,7 @@ export function AdminHistory() {
 
         {groups.map((g) => (
           <CombinedBillCard
-            key={g.key}
+            key={g.cycle.cycle_id}
             group={g}
             admin
             onOpenBill={(billId) => go({ name: 'admin-bill-detail', billId })}

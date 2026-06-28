@@ -1,18 +1,18 @@
 import { useState } from 'react';
 import { BillOverview } from './BillOverview';
-import { money, type MonthGroup } from './calc';
+import { money, type CycleGroup } from './calc';
 
 /**
- * One combined bill (a billing month), collapsed by default. Tapping the
- * header reveals the composition table — each utility × each person, with the
- * combined per-person totals.
+ * One billing cycle (migration 0005), collapsed by default. Tapping the header
+ * reveals the composition table — each utility × each person, with the combined
+ * per-person totals for that cycle.
  */
 export function CombinedBillCard({
   group,
   admin = false,
   onOpenBill,
 }: {
-  group: MonthGroup;
+  group: CycleGroup;
   admin?: boolean;
   onOpenBill?: (billId: string) => void;
 }) {
@@ -22,7 +22,7 @@ export function CombinedBillCard({
     <div className={`card ${admin ? 'admin' : ''}`}>
       <button className="combined-header" onClick={() => setOpen((o) => !o)}>
         <div className="bill-card">
-          <div className="util-label">{group.label}</div>
+          <div className="util-label">{group.cycle.display_name}</div>
           <div className="util-amount tnum" style={{ fontSize: 24 }}>
             {money(group.total)}
           </div>

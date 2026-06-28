@@ -1,16 +1,17 @@
 import { useApp } from '../store';
 import { Frame, ScreenNav, TopBar } from '../ui';
 import { CombinedBillCard } from '../CombinedBillCard';
-import { groupBillsByMonth } from '../calc';
+import { groupBillsByCycle } from '../calc';
 
 /**
  * Member-facing history: the same combined bills, read-only. Every housemate
- * sees the combined amount per cycle, how it's composed, and each person's
- * home-day count and share.
+ * sees the combined amount per cycle (migration 0005), how it's composed, and
+ * each person's home-day count and share.
  */
 export function MemberHistory() {
   const { house } = useApp();
-  const groups = groupBillsByMonth(house.bills);
+  // Only cycles that actually have bills appear in history.
+  const groups = groupBillsByCycle(house.bills, house.cycles).filter((g) => g.bills.length > 0);
 
   return (
     <Frame>
@@ -28,7 +29,7 @@ export function MemberHistory() {
         </div>
 
         {groups.map((g) => (
-          <CombinedBillCard key={g.key} group={g} />
+          <CombinedBillCard key={g.cycle.cycle_id} group={g} />
         ))}
       </div>
     </Frame>

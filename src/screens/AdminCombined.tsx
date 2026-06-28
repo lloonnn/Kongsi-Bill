@@ -16,7 +16,7 @@ import type { RoundingConfig } from '../types';
  * There is no separate "lock" step: closing the case IS the lock.
  */
 export function AdminCombined() {
-  const { house, go, adminCode, setAllBillsStatus, busy } = useApp();
+  const { house, route, go, adminCode, finalizeCycle, busy } = useApp();
   const [rounding, setRounding] = useState<RoundingConfig>({
     enabled: false,
     mode: 'down',
@@ -40,10 +40,31 @@ export function AdminCombined() {
     );
   }
 
+  // Scoped to ONE cycle (migration 0005): Calculate never combines across cycles.
+  const cycleId = route.cycleId ?? '';
+  const cycle = house.cycles.find((c) => c.cycle_id === cycleId);
   const members = house.members.filter((m) => m.active);
-  const openBills = house.bills.filter((b) => b.status === 'draft');
-  const hasPaid = house.bills.some((b) => b.status === 'paid');
+  const openBills = house.bills.filter((b) => b.cycle_id === cycleId && b.status === 'draft');
+  const hasPaid = house.bills.some((b) => b.cycle_id === cycleId && b.status === 'paid');
   const calc = calculateCombined(openBills, house.members, rounding);
+
+  // Calculate is always scoped to a specific cycle (reached from the dashboard).
+  if (!cycle) {
+    return (
+      <Frame>
+        <TopBar icon="LD" name={house.display_name} sub="Calculate" admin />
+        <div className="screen gap">
+          <ScreenNav />
+          <div className="card admin">
+            <p className="sub">Pick a cycle to calculate from the house overview.</p>
+            <button className="btn-primary" onClick={() => go({ name: 'admin-dashboard' })}>
+              Back to house
+            </button>
+          </div>
+        </div>
+      </Frame>
+    );
+  }
 
   const ready = members.filter((m) => m.days_confirmed);
   const pending = members.filter((m) => !m.days_confirmed);
@@ -65,11 +86,12 @@ export function AdminCombined() {
     }
   };
 
-  // One finishing action: announce the amounts (copy to clipboard) AND close the
-  // cycle — dates lock and it files into history. No separate "pay then close".
+  // One finishing action: announce the amounts (copy to clipboard) AND finalize
+  // THIS cycle — its bills settle (splits freeze) and it files into history. A
+  // different cycle's bills are never touched. No separate "pay then close".
   const announce = async () => {
     await copyAmounts();
-    await setAllBillsStatus('paid');
+    await finalizeCycle(cycleId);
   };
 
   // If everyone's marked their days, announcing is one tap. If some haven't, we
@@ -98,7 +120,7 @@ export function AdminCombined() {
   if (openBills.length === 0) {
     return (
       <Frame>
-        <TopBar icon="LD" name={house.display_name} sub="Finalize the bills" admin />
+        <TopBar icon="LD" name={house.display_name} sub={`Calculate · ${cycle.display_name}`} admin />
         <div className="screen gap">
           <ScreenNav />
           <div className="card admin">

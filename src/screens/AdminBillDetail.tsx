@@ -81,6 +81,7 @@ function BillEditor({ bill }: { bill: Bill }) {
     if (!valid) return;
     await upsertBill({
       bill_id: bill.bill_id,
+      cycle_id: bill.cycle_id, // keep the bill in its cycle (migration 0005)
       utility_label,
       amount: amt,
       period_start: start,

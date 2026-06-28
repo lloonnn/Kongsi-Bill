@@ -25,7 +25,7 @@ const dateStyle: CSSProperties = {
  * each bill's own page. Extrapolated screen.
  */
 export function AdminAddBill() {
-  const { house, go, upsertBill, deleteBill, busy, error } = useApp();
+  const { house, route, go, upsertBill, deleteBill, busy, error } = useApp();
   // The dropdown is a frontend convenience; whatever is chosen (or typed for
   // "Other") resolves to the single free-text utility_label sent to the API.
   const [preset, setPreset] = useState('Water');
@@ -33,6 +33,9 @@ export function AdminAddBill() {
   const [amount, setAmount] = useState('');
   const [start, setStart] = useState('2026-06-01');
   const [end, setEnd] = useState('2026-06-30');
+  // Which cycle these bills land in (migration 0005). Prefer the one the caller
+  // targeted, else the newest existing cycle.
+  const [cycleId, setCycleId] = useState(route.cycleId ?? house.cycles[0]?.cycle_id ?? '');
   // bill_ids added during this sitting, newest last — drives the preview list.
   const [addedIds, setAddedIds] = useState<string[]>([]);
 
@@ -40,7 +43,8 @@ export function AdminAddBill() {
   const utility_label = (isOther ? customLabel : preset).trim();
 
   const amt = parseFloat(amount);
-  const valid = !Number.isNaN(amt) && amt > 0 && start <= end && utility_label.length > 0;
+  const valid =
+    !Number.isNaN(amt) && amt > 0 && start <= end && utility_label.length > 0 && !!cycleId;
 
   const added = addedIds
     .map((id) => house.bills.find((b) => b.bill_id === id))
@@ -49,6 +53,7 @@ export function AdminAddBill() {
   const addBill = async () => {
     if (!valid) return;
     const id = await upsertBill({
+      cycle_id: cycleId,
       utility_label,
       amount: amt,
       period_start: start,
@@ -59,6 +64,30 @@ export function AdminAddBill() {
     setAmount('');
     setCustomLabel('');
   };
+
+  // A bill can't exist without a cycle — if none exist yet, send the admin to
+  // create one first (it returns here, targeting the new cycle).
+  if (house.cycles.length === 0) {
+    return (
+      <Frame>
+        <TopBar icon="LD" name={house.display_name} sub="Add bills" admin />
+        <div className="screen">
+          <ScreenNav />
+          <div className="card admin">
+            <div className="eyebrow-pill admin">🗂️ Cycle needed</div>
+            <h1 className="title sm">Create a cycle first</h1>
+            <p className="sub">
+              Bills belong to a billing cycle (e.g. “June 2026”). Create one, then
+              add its bills.
+            </p>
+            <button className="btn-primary" onClick={() => go({ name: 'admin-add-cycle' })}>
+              + New cycle
+            </button>
+          </div>
+        </div>
+      </Frame>
+    );
+  }
 
   const remove = async (id: string) => {
     await deleteBill(id);
@@ -80,6 +109,31 @@ export function AdminAddBill() {
             Enter the total and the period it covers. Add as many as you like —
             each is saved as a draft you can review and mark paid later.
           </p>
+
+          <div className="row-between" style={{ alignItems: 'center' }}>
+            <span className="field-label">Cycle</span>
+            <button className="copy-btn" onClick={() => go({ name: 'admin-add-cycle' })}>
+              + New cycle
+            </button>
+          </div>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(2, 1fr)',
+              gap: 8,
+              marginTop: 8,
+            }}
+          >
+            {house.cycles.map((c) => (
+              <div
+                key={c.cycle_id}
+                className={`opt ${cycleId === c.cycle_id ? 'selected' : ''}`}
+                onClick={() => setCycleId(c.cycle_id)}
+              >
+                🗂️ {c.display_name}
+              </div>
+            ))}
+          </div>
 
           <span className="field-label">Type of bill</span>
           <div

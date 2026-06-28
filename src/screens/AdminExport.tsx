@@ -32,7 +32,7 @@ export function AdminExport() {
           <h1 className="title sm">Export the numbers</h1>
           <p className="sub">
             Pull the split out as a spreadsheet for your records or to share —
-            one table per billing period.
+            one table per billing cycle.
           </p>
 
           {done && (
@@ -50,9 +50,9 @@ export function AdminExport() {
 
           <button
             className="btn-primary"
-            onClick={() => run('latest bill', () => exportLatest(house))}
+            onClick={() => run('latest cycle', () => exportLatest(house))}
           >
-            Export latest bill
+            Export latest cycle
           </button>
           <button
             className="btn-secondary"
