@@ -9,7 +9,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { calculate, calculateCombined, groupBillsByCycle, NO_ROUNDING } from './calc.ts';
+import {
+  calculate,
+  calculateCombined,
+  groupBillsByCycle,
+  NO_ROUNDING,
+  roundToIncrement,
+} from './calc.ts';
 import type { Bill, Cycle, Member, PaidSnapshotEntry } from './types.ts';
 
 function member(
@@ -216,4 +222,50 @@ test('(g) overlapping dates across cycles do not collide — each cycle computes
   assert.equal(julyCalc.shares[0].amount, 200);
   // The overlap on 25–30 June never double-counts or cross-contaminates.
   assert.equal(juneCalc.grandTotal + julyCalc.grandTotal, 320);
+});
+
+// ---------------------------------------------------------------------------
+// roundToIncrement — round final per-person totals to the nearest 0.05.
+//   up   = ceiling to 0.05
+//   down = floor to 0.05
+//   already on a 5-cent mark → up = down = unchanged (must hold EXACTLY despite
+//   float error, e.g. 0.15 / 0.05 === 2.9999999999999996).
+// ---------------------------------------------------------------------------
+
+const up = (v: number) => roundToIncrement(v, 0.05, 'up');
+const down = (v: number) => roundToIncrement(v, 0.05, 'down');
+
+test('(r1) off-mark values round to the 5-cent boundary in each direction', () => {
+  assert.equal(up(53.44), 53.45);
+  assert.equal(down(53.44), 53.4);
+  assert.equal(up(53.49), 53.5);
+  assert.equal(down(53.49), 53.45);
+  assert.equal(up(43.49), 43.5);
+  assert.equal(down(43.49), 43.45);
+});
+
+test('(r2) the spec’s on-mark values are unchanged in both directions', () => {
+  assert.equal(up(53.45), 53.45);
+  assert.equal(down(53.45), 53.45);
+  assert.equal(up(53.4), 53.4);
+  assert.equal(down(53.4), 53.4);
+});
+
+test('(r3) float-boundary on-mark values are NOT bumped (regression: 0.15/1.15/2.05 down)', () => {
+  // Each of these divided by 0.05 is just under an integer in float, so the old
+  // value/increment + Math.floor bumped them down a step. They must stay put.
+  for (const v of [0.05, 0.1, 0.15, 0.2, 0.45, 1.15, 2.05, 3.35, 9.95]) {
+    assert.equal(down(v), v, `down(${v}) must be unchanged`);
+    assert.equal(up(v), v, `up(${v}) must be unchanged`);
+  }
+});
+
+test('(r4) every 5-cent mark from 0.00 to 10.00 is a fixed point of both directions', () => {
+  // Exhaustive on-mark sweep — proves the "unchanged" rule holds across the range,
+  // not just for the hand-picked values above.
+  for (let cents = 0; cents <= 1000; cents += 5) {
+    const v = cents / 100;
+    assert.equal(down(v), v, `down(${v})`);
+    assert.equal(up(v), v, `up(${v})`);
+  }
 });

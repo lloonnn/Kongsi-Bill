@@ -152,10 +152,27 @@ function roundCentsLargestRemainder(
   return cents.map((c) => c / 100);
 }
 
-function roundToIncrement(value: number, increment: number, mode: 'down' | 'up'): number {
-  const steps = value / increment;
-  const r = mode === 'down' ? Math.floor(steps) : Math.ceil(steps);
-  return Math.round(r * increment * 100) / 100;
+/**
+ * Round a money value to the nearest `increment` (e.g. 0.05) in the chosen
+ * direction: `up` = ceiling, `down` = floor. A value already on an increment
+ * boundary is returned UNCHANGED in both directions.
+ *
+ * Worked in INTEGER CENTS on purpose. Dividing dollars by 0.05 in floating point
+ * misfires exactly on the boundary — e.g. `0.15 / 0.05 === 2.9999999999999996`,
+ * which would floor to `0.10` and wrongly bump an on-the-mark value down. Snapping
+ * `value` and `increment` to integer cents first (Math.round) removes that error,
+ * so the "already on the mark → unchanged" rule holds exactly.
+ *
+ * Exported so the boundary behaviour can be unit-tested directly (calc.test.ts).
+ */
+export function roundToIncrement(value: number, increment: number, mode: 'down' | 'up'): number {
+  const cents = Math.round(value * 100);
+  const step = Math.round(increment * 100);
+  const rounded =
+    mode === 'down'
+      ? Math.floor(cents / step) * step
+      : Math.ceil(cents / step) * step;
+  return rounded / 100;
 }
 
 /**
