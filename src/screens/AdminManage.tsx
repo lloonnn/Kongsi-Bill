@@ -44,7 +44,6 @@ export function AdminManage() {
       await becomeAdmin(houseTrimmed, trimmed);
       // Verified: session is seeded with the house + admin code. Enter the admin
       // area. Only reached on success — failures/offline return before here.
-      console.log('[AdminManage] admin code verified — session seeded, entering dashboard');
       go({ name: 'admin-dashboard' });
     } catch (e) {
       if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {

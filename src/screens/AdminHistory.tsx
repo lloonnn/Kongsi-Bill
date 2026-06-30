@@ -1,5 +1,5 @@
 import { useApp } from '../store';
-import { ExtrapolatedTag, Frame, ScreenNav, TopBar } from '../ui';
+import { Frame, ScreenNav, TopBar } from '../ui';
 import { CombinedBillCard } from '../CombinedBillCard';
 import { groupBillsByCycle } from '../calc';
 import { isCycleActive } from '../cyclePlacement';
@@ -26,7 +26,6 @@ export function AdminHistory() {
         <ScreenNav />
 
         <div className="card admin">
-          <ExtrapolatedTag />
           <div className="working-title">Finalized cycles</div>
           <p className="muted-note">
             Settled cycles, filed once you finalize them. One combined amount goes

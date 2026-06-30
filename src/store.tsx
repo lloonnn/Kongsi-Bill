@@ -10,7 +10,6 @@ import {
 import type {
   Bill,
   BillStatus,
-  Cycle,
   DateRange,
   HouseState,
   Member,
@@ -26,7 +25,8 @@ const TODAY = new Date().toISOString().slice(0, 10);
 /**
  * A blank house for first run / cold boot, before a real one is created or
  * joined. Shaped exactly like GET /house/:id so every screen renders empty
- * states without special-casing. (Replaces the old offline demo seed.)
+ * states without special-casing. Once a house is opened/joined this is replaced
+ * by live state from the Worker — every change goes through the API.
  */
 const EMPTY_HOUSE: HouseState = {
   house_id: '',
@@ -135,7 +135,7 @@ interface AppContextValue {
   house: HouseState;
   /** Admin code if the current user holds it (only the admin does). */
   adminCode: string | null;
-  /** True once connected to a real house (vs. the offline demo seed). */
+  /** True once a house has been opened or joined (a live session exists). */
   connected: boolean;
   today: string;
   route: Route;
@@ -320,31 +320,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return adminCode;
     };
 
+    // Every mutation goes through the Worker — there is no offline mode. Acting
+    // without a live house is a programmer error, surfaced as a clear message.
+    const requireSession = (): Session => {
+      if (!session) {
+        throw new Error('You’re not connected to a house. Open or join one first.');
+      }
+      return session;
+    };
+
     const addMember = (name: string) =>
       run(async () => {
-        let member: Member;
-        if (connected && session) {
-          const created = await api.addMember(session.houseId, name, requireAdmin());
-          member = { ...created, presence: [] };
-        } else {
-          // Offline demo seed: no backend, so mint a local-only member.
-          member = {
-            member_id: 'm-' + Date.now(),
-            name,
-            active: true,
-            days_confirmed: false,
-            presence: [],
-          };
-        }
+        const s = requireSession();
+        const created = await api.addMember(s.houseId, name, requireAdmin());
+        const member: Member = { ...created, presence: [] };
         setHouse((h) => ({ ...h, members: [...h.members, member] }));
         return member;
       });
 
     const softRemoveMember = (memberId: string) =>
       run(async () => {
-        if (connected && session) {
-          await api.removeMember(session.houseId, memberId, requireAdmin());
-        }
+        const s = requireSession();
+        await api.removeMember(s.houseId, memberId, requireAdmin());
         setHouse((h) => ({
           ...h,
           members: h.members.map((m) =>
@@ -355,11 +352,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const setPresence = (memberId: string, ranges: DateRange[]) =>
       run(async () => {
-        let saved = ranges;
-        if (connected && session) {
-          const res = await api.setPresence(session.houseId, memberId, ranges, codes);
-          saved = res.presence; // server merges overlaps; trust its result
-        }
+        const s = requireSession();
+        const res = await api.setPresence(s.houseId, memberId, ranges, codes);
+        const saved = res.presence; // server merges overlaps; trust its result
         // Editing days un-confirms the member (matches the Worker).
         setHouse((h) => ({
           ...h,
@@ -371,9 +366,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const confirmDays = (memberId: string) =>
       run(async () => {
-        if (connected && session) {
-          await api.confirmDays(session.houseId, memberId, codes);
-        }
+        const s = requireSession();
+        await api.confirmDays(s.houseId, memberId, codes);
         setHouse((h) => ({
           ...h,
           members: h.members.map((m) =>
@@ -384,17 +378,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const upsertCycle = (input: CycleInput) =>
       run(async () => {
-        let cycle: Cycle;
-        if (connected && session) {
-          cycle = await api.upsertCycle(session.houseId, input, requireAdmin());
-        } else {
-          cycle = {
-            cycle_id: input.cycle_id ?? 'cycle-' + Date.now(),
-            display_name: input.display_name,
-            status: input.status ?? 'open',
-            created_at: TODAY,
-          };
-        }
+        const s = requireSession();
+        const cycle = await api.upsertCycle(s.houseId, input, requireAdmin());
         setHouse((h) => {
           const exists = h.cycles.some((c) => c.cycle_id === cycle.cycle_id);
           return {
@@ -409,21 +394,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const upsertBill = (input: BillInput) =>
       run(async () => {
-        let bill: Bill;
-        if (connected && session) {
-          bill = await api.upsertBill(session.houseId, input, requireAdmin());
-        } else {
-          bill = {
-            bill_id: input.bill_id ?? 'bill-' + Date.now(),
-            cycle_id: input.cycle_id,
-            utility_label: input.utility_label,
-            amount: input.amount,
-            period_start: input.period_start,
-            period_end: input.period_end,
-            status: input.status ?? 'draft',
-            paid_snapshot: input.paid_snapshot ?? null,
-          };
-        }
+        const s = requireSession();
+        const bill = await api.upsertBill(s.houseId, input, requireAdmin());
         setHouse((h) => {
           const exists = h.bills.some((b) => b.bill_id === bill.bill_id);
           return {
@@ -438,9 +410,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const deleteBill = (billId: string) =>
       run(async () => {
-        if (connected && session) {
-          await api.deleteBill(session.houseId, billId, requireAdmin());
-        }
+        const s = requireSession();
+        await api.deleteBill(s.houseId, billId, requireAdmin());
         setHouse((h) => ({
           ...h,
           bills: h.bills.filter((b) => b.bill_id !== billId),
@@ -451,37 +422,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // member-facing UI honours; the admin can always reopen (back to draft).
     const setBillStatus = (billId: string, status: BillStatus) =>
       run(async () => {
+        const s = requireSession();
         const current = house.bills.find((b) => b.bill_id === billId);
         if (!current) return;
         // Settling freezes the split; any other status (e.g. reopening to draft)
         // clears the snapshot so the bill recalculates live again.
         const snapshot = status === 'paid' ? snapshotFor(current) : null;
-        const next: Bill = { ...current, status, paid_snapshot: snapshot };
-        if (connected && session) {
-          const saved = await api.upsertBill(
-            session.houseId,
-            {
-              bill_id: next.bill_id,
-              cycle_id: next.cycle_id,
-              utility_label: next.utility_label,
-              amount: next.amount,
-              period_start: next.period_start,
-              period_end: next.period_end,
-              status: next.status,
-              paid_snapshot: snapshot,
-            },
-            requireAdmin()
-          );
-          setHouse((h) => ({
-            ...h,
-            bills: h.bills.map((x) => (x.bill_id === saved.bill_id ? saved : x)),
-          }));
-        } else {
-          setHouse((h) => ({
-            ...h,
-            bills: h.bills.map((x) => (x.bill_id === billId ? next : x)),
-          }));
-        }
+        const saved = await api.upsertBill(
+          s.houseId,
+          {
+            bill_id: current.bill_id,
+            cycle_id: current.cycle_id,
+            utility_label: current.utility_label,
+            amount: current.amount,
+            period_start: current.period_start,
+            period_end: current.period_end,
+            status,
+            paid_snapshot: snapshot,
+          },
+          requireAdmin()
+        );
+        setHouse((h) => ({
+          ...h,
+          bills: h.bills.map((x) => (x.bill_id === saved.bill_id ? saved : x)),
+        }));
       });
 
     // Calculate/finalize ONE cycle: settle every draft bill in it (freezing each
@@ -489,6 +453,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // a different cycle's bills are never touched, even if dates overlap.
     const finalizeCycle = (cycleId: string) =>
       run(async () => {
+        const s = requireSession();
         const cycle = house.cycles.find((c) => c.cycle_id === cycleId);
         const targets = house.bills.filter(
           (b) => b.cycle_id === cycleId && b.status !== 'paid'
@@ -498,30 +463,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const snapshots = new Map<string, PaidSnapshotEntry[] | null>(
           targets.map((b) => [b.bill_id, snapshotFor(b)])
         );
-        if (connected && session) {
-          for (const b of targets) {
-            await api.upsertBill(
-              session.houseId,
-              {
-                bill_id: b.bill_id,
-                cycle_id: b.cycle_id,
-                utility_label: b.utility_label,
-                amount: b.amount,
-                period_start: b.period_start,
-                period_end: b.period_end,
-                status: 'paid',
-                paid_snapshot: snapshots.get(b.bill_id) ?? null,
-              },
-              requireAdmin()
-            );
-          }
-          if (cycle) {
-            await api.upsertCycle(
-              session.houseId,
-              { cycle_id: cycleId, display_name: cycle.display_name, status: 'finalized' },
-              requireAdmin()
-            );
-          }
+        for (const b of targets) {
+          await api.upsertBill(
+            s.houseId,
+            {
+              bill_id: b.bill_id,
+              cycle_id: b.cycle_id,
+              utility_label: b.utility_label,
+              amount: b.amount,
+              period_start: b.period_start,
+              period_end: b.period_end,
+              status: 'paid',
+              paid_snapshot: snapshots.get(b.bill_id) ?? null,
+            },
+            requireAdmin()
+          );
+        }
+        if (cycle) {
+          await api.upsertCycle(
+            s.houseId,
+            { cycle_id: cycleId, display_name: cycle.display_name, status: 'finalized' },
+            requireAdmin()
+          );
         }
         setHouse((h) => ({
           ...h,
@@ -538,15 +501,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const regenerateMemberCode = () =>
       run(async () => {
-        if (connected && session) {
-          const res = await api.regenerateMemberCode(session.houseId, requireAdmin());
-          setSession((s) => {
-            const next = s ? { ...s, memberCode: res.member_code } : s;
-            saveSession(next);
-            return next;
-          });
-          setHouse((h) => ({ ...h, member_code: res.member_code }));
-        }
+        const s = requireSession();
+        const res = await api.regenerateMemberCode(s.houseId, requireAdmin());
+        setSession((prev) => {
+          const next = prev ? { ...prev, memberCode: res.member_code } : prev;
+          saveSession(next);
+          return next;
+        });
+        setHouse((h) => ({ ...h, member_code: res.member_code }));
       });
 
     return {

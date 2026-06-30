@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useApp } from '../store';
-import { Avatar, ExtrapolatedTag, Frame, ScreenNav, TopBar } from '../ui';
+import { Avatar, Frame, ScreenNav, TopBar } from '../ui';
 
 /** Soft-remove / restore / add housemates. Extrapolated admin utility. */
 export function AdminMembers() {
@@ -20,7 +20,6 @@ export function AdminMembers() {
       <div className="screen">
         <ScreenNav />
         <div className="card admin">
-          <ExtrapolatedTag />
           <div className="working-title">Housemates</div>
           <p className="muted-note" style={{ marginBottom: 12 }}>
             Soft-removing keeps someone in past bills but stops them recording new

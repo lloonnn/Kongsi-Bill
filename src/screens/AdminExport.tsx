@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useApp } from '../store';
 import { exportHistory, exportLatest } from '../export';
-import { ExtrapolatedTag, Frame, ScreenNav, TopBar } from '../ui';
+import { Frame, ScreenNav, TopBar } from '../ui';
 
 /** Export the split to a .csv file. One table per billing period. */
 export function AdminExport() {
@@ -27,7 +27,6 @@ export function AdminExport() {
       <div className="screen">
         <ScreenNav />
         <div className="card admin">
-          <ExtrapolatedTag />
           <div className="eyebrow-pill admin">📤 Export</div>
           <h1 className="title sm">Export the numbers</h1>
           <p className="sub">

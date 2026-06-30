@@ -1,20 +1,23 @@
 import { useState } from 'react';
 import { useApp } from '../store';
-import { Avatar, ExtrapolatedTag, Frame, ScreenNav, TopBar } from '../ui';
+import { Avatar, Frame, ScreenNav, TopBar } from '../ui';
 import { Calendar } from '../Calendar';
 import { ShareCodes } from '../ShareCodes';
 import { billIcon, billLabel, formatPeriod, money } from '../calc';
 import type { DateRange, Member } from '../types';
 
-// Three landing states the prototype can simulate via the dev toggle. There is
-// no "locked" state anymore — bills stay editable regardless of status.
+// The member home page shows one of three states, derived from the house's
+// bills (no manual toggle):
+//   none   — no bills yet
+//   active — at least one bill still open (not paid) → mark/confirm your days
+//   calm   — bills exist but all settled (paid) → nothing to do right now
 type LandingState = 'none' | 'active' | 'calm';
 
-const STATE_LABELS: Record<LandingState, string> = {
-  none: 'No bills',
-  active: 'Bills to mark',
-  calm: 'Calm',
-};
+/** {year, month} (0-based) for the calendar to open on, from an ISO date. */
+function monthOf(iso: string | undefined): { year: number; month: number } {
+  const d = iso ? new Date(iso + 'T00:00:00') : new Date();
+  return { year: d.getFullYear(), month: d.getMonth() };
+}
 
 /**
  * Returning-member, state-aware landing. The same member sees a different
@@ -23,7 +26,6 @@ const STATE_LABELS: Record<LandingState, string> = {
  */
 export function MemberLanding() {
   const { house, currentMemberId, go, connected } = useApp();
-  const [state, setState] = useState<LandingState>('active');
 
   // Not joined to any house yet — there's no home page to show.
   if (!connected) {
@@ -69,27 +71,16 @@ export function MemberLanding() {
     );
   }
 
+  // Derive the landing state from real data — no manual toggle.
+  const openBills = house.bills.filter((b) => b.status !== 'paid');
+  const state: LandingState =
+    house.bills.length === 0 ? 'none' : openBills.length > 0 ? 'active' : 'calm';
+
   return (
     <Frame>
       <TopBar icon="LD" name={house.display_name} sub={member.name} />
       <div className="screen">
         <ScreenNav />
-        {/* dev-only state simulator */}
-        <div className="card" style={{ marginBottom: 14 }}>
-          <ExtrapolatedTag />
-          <div className="working-title">Dev — simulate house state</div>
-          <div className="seg-choice" style={{ flexWrap: 'wrap' }}>
-            {(Object.keys(STATE_LABELS) as LandingState[]).map((s) => (
-              <div
-                key={s}
-                className={`opt ${state === s ? 'selected' : ''}`}
-                onClick={() => setState(s)}
-              >
-                {STATE_LABELS[s]}
-              </div>
-            ))}
-          </div>
-        </div>
 
         <div className="greeting-line">
           Hi {member.name}, here's where things stand
@@ -112,10 +103,10 @@ export function MemberLanding() {
 function NoBills() {
   return (
     <div className="card">
-      <div className="eyebrow-pill">Nothing to split yet</div>
+      <div className="eyebrow-pill">No bills yet</div>
       <p className="sub">
-        No bills have been added. When one arrives you’ll be counted home by
-        default — you’ll only mark the days you were away. Nothing to do for now.
+        Your house hasn’t added any bills yet. When the first one arrives you’ll
+        be counted home by default — you’ll only mark the days you were away.
       </p>
     </div>
   );
@@ -124,6 +115,8 @@ function NoBills() {
 function ActiveBills({ member }: { member: Member }) {
   const { house, setPresence, confirmDays, error } = useApp();
   const bills = house.bills;
+  // Open the calendar on the earliest bill's period so the dotted days are visible.
+  const initialView = monthOf([...bills].map((b) => b.period_start).sort()[0]);
   const [draft, setDraft] = useState<DateRange[] | null>(null);
   // Pending = the calendar has unsaved edits (so the confirmed badge is stale).
   const [pending, setPending] = useState(false);
@@ -174,7 +167,7 @@ function ActiveBills({ member }: { member: Member }) {
       <Calendar
         memberId={member.member_id}
         bills={bills}
-        initial={{ year: 2026, month: 4 }}
+        initial={initialView}
         onChange={(r) => {
           setDraft(r);
           setPending(true);
@@ -211,11 +204,11 @@ function ActiveBills({ member }: { member: Member }) {
 function Calm({ member }: { member: Member }) {
   return (
     <div className="card">
-      <div className="eyebrow-pill">All caught up</div>
+      <div className="eyebrow-pill">All settled</div>
       <h1 className="title sm">Nothing needs you right now</h1>
       <p className="sub">
-        Nothing to mark. When the next bill arrives you’ll be counted home by
-        default — you’ll only need to note any days you were away.
+        Your bills are all settled — nothing to mark. You’ll get a nudge here
+        when the next bill is added.
       </p>
       <div className="row-between" style={{ marginTop: 16 }}>
         <div className="person-left">

@@ -38,40 +38,10 @@ const SCREENS: Record<RouteName, () => ReactElement> = {
   'admin-manage': AdminManage,
 };
 
-// Quick jumps for click-through review (prototype scaffolding, not product).
-const DEV_LINKS: { name: RouteName; label: string }[] = [
-  { name: 'hub', label: 'Hub' },
-  { name: 'member-join', label: 'Member join' },
-  { name: 'member-landing', label: 'Member landing' },
-  { name: 'admin-setup', label: 'Admin setup' },
-  { name: 'admin-dashboard', label: 'Admin house' },
-  { name: 'admin-manage', label: 'Admin manage' },
-];
-
 function Router() {
-  const { route, go, back, canGoBack } = useApp();
+  const { route } = useApp();
   const Screen = SCREENS[route.name];
-
-  return (
-    <>
-      <Screen />
-      <div className="devbar">
-        <button onClick={back} disabled={!canGoBack}>
-          ← Back
-        </button>
-        <span className="devlabel">prototype nav</span>
-        {DEV_LINKS.map((l) => (
-          <button
-            key={l.name}
-            className={route.name === l.name ? 'active' : ''}
-            onClick={() => go({ name: l.name })}
-          >
-            {l.label}
-          </button>
-        ))}
-      </div>
-    </>
-  );
+  return <Screen />;
 }
 
 export default function App() {

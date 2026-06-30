@@ -38,14 +38,6 @@ export function Avatar({
   );
 }
 
-export function ExtrapolatedTag() {
-  return (
-    <span className="extrapolated-tag" title="Not yet design-reviewed">
-      extrapolated
-    </span>
-  );
-}
-
 const STATUS_TEXT: Record<BillStatus, string> = {
   draft: 'Open',
   confirmed: 'Confirmed',

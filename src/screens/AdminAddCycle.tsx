@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useApp } from '../store';
-import { ExtrapolatedTag, Frame, ScreenNav, TopBar } from '../ui';
+import { Frame, ScreenNav, TopBar } from '../ui';
 
 /**
  * Create a billing cycle (migration 0005): the admin types its name (e.g.
@@ -28,7 +28,6 @@ export function AdminAddCycle() {
         <ScreenNav />
 
         <div className="card admin">
-          <ExtrapolatedTag />
           <div className="eyebrow-pill admin">🗂️ New cycle</div>
           <h1 className="title sm">Name this billing cycle</h1>
           <p className="sub">

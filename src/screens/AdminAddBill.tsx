@@ -1,6 +1,6 @@
 import { useState, type CSSProperties } from 'react';
 import { useApp } from '../store';
-import { ExtrapolatedTag, Frame, ProgressRow, ScreenNav, TopBar } from '../ui';
+import { Frame, ProgressRow, ScreenNav, TopBar } from '../ui';
 import { billIcon, formatPeriod, money, UTILITY_PRESETS } from '../calc';
 
 const dateStyle: CSSProperties = {
@@ -102,7 +102,6 @@ export function AdminAddBill() {
         <ProgressRow total={2} done={1} admin />
 
         <div className="card admin">
-          <ExtrapolatedTag />
           <div className="eyebrow-pill admin">🧾 New bill</div>
           <h1 className="title sm">{added.length ? 'Add another bill' : "What's this bill?"}</h1>
           <p className="sub">
