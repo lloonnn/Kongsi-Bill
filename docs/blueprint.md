@@ -4,7 +4,7 @@
 
 **Document status:** design reference. This is the design reference for what Kongsi Bill is, what it does, and how it is built. It seeds the repository README and guides the UI/UX design stage. Where the built code and config have moved on from the original v1 design, this document has been reconciled to the code (the code + config in `worker/`, `wrangler.toml`, `src/`, and `migrations/` are the source of truth); the frontend remains at prototype stage and its screen design is not final.
 
-**Last updated:** 28 June 2026
+**Last updated:** 30 June 2026
 
 ---
 
@@ -129,7 +129,7 @@ No individual user accounts, no passwords, no email/login, no always-on database
 | Code | Held by | Can do |
 |------|---------|--------|
 | **Member code** | All housemates | Join the house, record their own presence days, view splits. |
-| **Admin code** | The PIC only | Everything members can, plus create cycles, add/edit bills, calculate a cycle, settle a cycle (mark its bills paid, freezing each split), manage members, regenerate the member code, export. |
+| **Admin code** | The PIC only | Everything members can, plus create cycles, add/edit bills, calculate a cycle, settle a cycle (mark its bills paid, freezing each split), delete a mistaken bill or an active cycle, manage members, regenerate the member code, export. |
 
 Admin is a **capability, not a separate entity**: there is no `admin_member_id` and no admin record. The PIC is simply whoever holds the admin code, and is otherwise an ordinary member (or not a member at all — see §5.2.1). The codes *are* the access mechanism — there is no separate identity. This is the deliberate trade that removes authentication entirely. Its accepted limitations: the app cannot prove *which* member acted (no per-person accountability), and security depends on codes being kept within the house.
 
@@ -155,7 +155,7 @@ Because the admin is just the holder of the admin code, creating a house does **
 
 A focused reference for whoever becomes PIC. The admin code is the master key for a single house and the only proof of PIC status (there are no accounts).
 
-- **Powers it unlocks** (everything a member can do, plus): create a cycle and add/edit bills in it while they are open; calculate a cycle; **settle a cycle** — marking its bills paid, which saves a snapshot of each split and finalizes the cycle into History (see §7); add/soft-remove members; export latest cycle or full history; regenerate the member code; hand over to the next PIC. (There is no time-based lock and no admin override — an open bill stays fully editable for as long as it is open; see §7.)
+- **Powers it unlocks** (everything a member can do, plus): create a cycle and add/edit bills in it while they are open; calculate a cycle; **settle a cycle** — marking its bills paid, which saves a snapshot of each split and finalizes the cycle into History (see §7); delete a mistaken bill or an active cycle (the cycle delete cascades to its bills — §6.8); add/soft-remove members; export latest cycle or full history; regenerate the member code; hand over to the next PIC. (There is no time-based lock and no admin override — an open bill stays fully editable for as long as it is open; see §7.)
 - **When used:** roughly once per billing cycle (create cycle → add its bills → collect days → Calculate → settle), plus off-cycle housekeeping (member changes, a leaked code).
 - **How used — typed, never linked:** the admin reaches the manage path (`/manage`) and **types the admin code by hand each time**. Unlike the member code, it is never embedded in a link, because the member join link is pasted into the house group chat where it is visible. Typing keeps the admin code out of chat history and link previews. This is the deliberate asymmetry from §5.3.
 - **Unrecoverable:** with no accounts there is no reset. A lost admin code with no holder orphans the house (members can still view, but no one can administer). This is why the save-codes step at creation (§5.4) is treated as the one critical, unskippable moment, and why handoff means deliberately passing the code on.
@@ -241,11 +241,12 @@ status            enum      (open | finalized)
 created_at        date
 schema_version    integer
 ```
-A **cycle** is an explicit, admin-named billing period that groups that period's bills (electricity + water + …). It replaces the earlier implicit "group bills by the month they end in." Key points:
+A **cycle** is an explicit, admin-named billing period that groups that period's bills (electricity + water + …). It replaces the earlier implicit "group bills by the month they end in." **Terminology:** the data model and code call this a *cycle* (`cycles` table, `cycle_id`, `groupBillsByCycle`, `isCycleActive`); the **user-facing UI and the user docs call it a "billing period"** — the same thing under two names. (The per-bill date range is shown to users simply as the bill's "Period.") Key points:
 - **Calculate acts on one cycle at a time** — it combines only that cycle's bills into each person's total, never across cycles (`groupBillsByCycle` in `src/calc.ts` feeds one cycle's bills into the existing, unchanged per-bill maths). Because cycles are explicit, two cycles may carry **overlapping dates** without interfering.
 - `status` is `open` → `finalized` — a label only (like `bills.status`, it never gates storage). Settling a cycle's bills sets it to `finalized`.
 - **Placement follows status (display only).** The admin bills screen shows **active** cycles — those whose status is not `finalized`, *or* that still have any `draft` bill; **finalized** cycles move to a **History** view (`src/cyclePlacement.ts` `isCycleActive`, with `AdminDashboard`/`AdminHistory`). Reopening a settled bill flips it back to `draft`, which pulls its whole cycle back to the active screen until it is calculated and settled again.
-- **Endpoints:** `POST /api/house/:id/cycle` creates or updates a cycle (admin only), mirroring the bill-upsert endpoint; `GET /api/house/:id` returns the house's `cycles` array alongside its bills, and every bill carries its `cycle_id`.
+- **Endpoints:** `POST /api/house/:id/cycle` creates or updates a cycle (admin only), mirroring the bill-upsert endpoint; `POST /api/house/:id/cycle/:cycleId/remove` deletes a cycle **and cascades to every bill in it** (admin only — the Worker hard-deletes the cycle's bills then the cycle in one atomic batch, since D1's FK cascade is unreliable); `GET /api/house/:id` returns the house's `cycles` array alongside its bills, and every bill carries its `cycle_id`. (A single bill is likewise removable via `POST /api/house/:id/bill/:billId/remove`.)
+- **Deleting a cycle is an active-only action.** The UI offers "Delete billing period" only on cycles shown on the main screen (active/open); a finalized cycle in History is not deletable, so settled records cannot be wiped by accident. The cascade is the reason this is gated — deleting a cycle takes its bills with it.
 
 Migration 0005 introduced the `cycles` table and the `bills.cycle_id` foreign key (wiping the pre-cycle test bills for a clean start).
 
@@ -294,7 +295,7 @@ Three journeys plus lifecycle actions. (A visual flowchart of this exists alongs
 ### View, export & lifecycle
 - View history — **finalized cycles** in a History view (each cycle's bills combined into one per-person total); active/open cycles stay on the main screen (§6.8).
 - Export — **latest cycle** (newest cycle with bills) or **full history** (all cycles), generated client-side as **CSV** of the final numbers (see §10.2).
-- Lifecycle — soft-remove a departed housemate (one-way); regenerate a leaked code; delete a mistaken bill; **reopen** a settled bill to correct it (returns its cycle to active).
+- Lifecycle — soft-remove a departed housemate (one-way); regenerate a leaked code; delete a mistaken bill; **delete a whole cycle** (active cycles only; cascades to its bills — §6.8); **reopen** a settled bill to correct it (returns its cycle to active).
 
 ---
 

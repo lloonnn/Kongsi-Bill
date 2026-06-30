@@ -6,7 +6,7 @@ Kongsi Bill splits household bills — electricity, water, gas, whatever — bet
 
 > **"Kongsi"** is Malay for *sharing something within a group* — which is pretty much the whole point. The app is built with Singapore and Malaysia housemates in mind.
 
-**Last updated:** 28 June 2026 · *The frontend is at prototype stage (the UI will be redesigned). The calculation, data model, Worker API, architecture, and deployment described below are settled.*
+**Last updated:** 30 June 2026 · *The frontend is at prototype stage (the UI will be redesigned). The calculation, data model, Worker API, architecture, and deployment described below are settled.*
 
 ---
 
@@ -58,10 +58,10 @@ Kongsi Bill takes that spreadsheet off your hands, keeps a shared history for th
 
 1. Someone sets up a **house** and gets a room ID and two codes.
 2. **Housemates** tap a link to join, and mark the days they were home on a calendar.
-3. The person in charge creates a named **cycle** (e.g. "June 2026") and enters that period's **bills** into it — what each is for, how much, and the dates it covers.
-4. The app works out each person's share based on the days they were home **during that bill's dates**, and shows its working. **"Calculate" runs over one cycle at a time** — combining that cycle's bills into a single per-person total — never across cycles.
-5. A bill stays **open** (editable) with no time limit. When the cycle is settled, the PIC calculates and settles it: each bill's split is **frozen as a saved snapshot**, the cycle is marked **finalized**, and it moves to a **History** view. A frozen split can't change afterwards, even if someone edits days or moves out.
-6. You can export the records as a **CSV file** — the final numbers, ready to open in any spreadsheet. ("Export latest" gives the newest cycle's bills; "full history" gives every cycle.)
+3. The person in charge creates a named **billing period** (e.g. "June 2026") and enters that period's **bills** into it — what each is for, how much, and the dates it covers.
+4. The app works out each person's share based on the days they were home **during that bill's dates**, and shows its working. **"Calculate" runs over one billing period at a time** — combining that period's bills into a single per-person total — never across periods.
+5. A bill stays **open** (editable) with no time limit. When the billing period is settled, the PIC calculates and settles it: each bill's split is **frozen as a saved snapshot**, the period is marked **finalized**, and it moves to a **History** view. A frozen split can't change afterwards, even if someone edits days or moves out.
+6. You can export the records as a **CSV file** — the final numbers, ready to open in any spreadsheet. ("Export latest" gives the newest billing period's bills; "full history" gives every period.)
 
 ---
 
@@ -200,7 +200,7 @@ If your answer doesn't match the app's, **the app is wrong** — please open an 
 | Frontend     | **React + Vite** (a static site, *prototype stage*) | Good for the interactive calendar and live maths; builds to static files. The UI is a prototype and will be redesigned. |
 | The maths    | **Plain TypeScript, in your browser**         | The bit everyone audits — simple, in-house, no library.     |
 | Calendar     | **Hand-written** (plain TypeScript + native dates) | Date logic and multi-range selection, written in-repo — no date library is installed yet. |
-| Export       | **Plain CSV**, generated in the browser       | A `.csv` of the final, already-computed numbers (one table per cycle) — opens in any spreadsheet. No `xlsx`/SheetJS dependency and no live formulas; the numbers are the same ones shown on screen. |
+| Export       | **Plain CSV**, generated in the browser       | A `.csv` of the final, already-computed numbers (one table per billing period) — opens in any spreadsheet. No `xlsx`/SheetJS dependency and no live formulas; the numbers are the same ones shown on screen. |
 | The API      | **Cloudflare Worker** (just for storage)      | Saves and fetches data under `/api`. Does none of the maths. |
 | Database     | **Cloudflare D1** (SQLite)                     | Stores houses, members, days, and bills.                    |
 | Hosting      | **A single Cloudflare Worker** (serves the site *and* the API) + D1 | One Worker serves the static build and the API from one origin; serving the site is free and unlimited. |
@@ -259,7 +259,7 @@ npx wrangler login
 npx wrangler d1 create kongsi-bill   # then apply migrations/ with `wrangler d1 migrations apply`
 ```
 
-> Running `npm run dev` alone gives you the UI with no backend (the app falls back to an offline demo seed). To exercise the live `/api` contract and D1, use `npx wrangler dev` against the built `dist/`. If you ever need the Vite dev server to talk to a *remote* Worker, point `VITE_API_BASE` at it; otherwise the frontend calls `/api` on its own origin.
+> Running `npm run dev` alone gives you the UI with **no backend** — there's no offline/demo mode, so the app opens to a blank empty house and any save/load call fails until a Worker is serving `/api`. To exercise the live `/api` contract and D1, use `npx wrangler dev` against the built `dist/`. If you ever need the Vite dev server to talk to a *remote* Worker, point `VITE_API_BASE` at it; otherwise the frontend calls `/api` on its own origin.
 
 ---
 
@@ -277,7 +277,7 @@ The site runs on the free `*.workers.dev` address — live at **`https://kongsi-
 
 ## What it costs to run
 
-Realistically, **$0 a month.** The app does a handful of saves and reads per billing cycle per house, well inside Cloudflare's free limits. Loading the app is always free and unlimited; only save/fetch calls count, and they're nowhere near the cap. On the free tier Cloudflare just **stops** at a limit rather than billing you, so a surprise charge basically can't happen at this size. You'd only reach the flat $5/month plan with thousands of active houses.
+Realistically, **$0 a month.** The app does a handful of saves and reads per billing period per house, well inside Cloudflare's free limits. Loading the app is always free and unlimited; only save/fetch calls count, and they're nowhere near the cap. On the free tier Cloudflare just **stops** at a limit rather than billing you, so a surprise charge basically can't happen at this size. You'd only reach the flat $5/month plan with thousands of active houses.
 
 Upkeep is light and occasional: dependency updates a few times a year; a little work if the stored-data shape ever changes (made easier by versioning it from day one); regenerating a code if one leaks; and a usage alert as a backstop. Rate limiting is already in place — Cloudflare's Workers Rate Limiting binding (`RATE_LIMITER` in `wrangler.toml`), set to 65 requests per 60 seconds per house, returning a `429` when exceeded.
 
