@@ -29,7 +29,7 @@ export function AdminCombined() {
   if (!adminCode) {
     return (
       <Frame>
-        <TopBar icon="LD" name={house.display_name} sub="Admin only" admin />
+        <TopBar name={house.display_name} sub="Admin only" admin />
         <div className="screen">
           <ScreenNav />
           <div className="card">
@@ -52,7 +52,7 @@ export function AdminCombined() {
   if (!cycle) {
     return (
       <Frame>
-        <TopBar icon="LD" name={house.display_name} sub="Calculate" admin />
+        <TopBar name={house.display_name} sub="Calculate" admin />
         <div className="screen gap">
           <ScreenNav />
           <div className="card admin">
@@ -120,7 +120,7 @@ export function AdminCombined() {
   if (openBills.length === 0) {
     return (
       <Frame>
-        <TopBar icon="LD" name={house.display_name} sub={`Calculate · ${cycle.display_name}`} admin />
+        <TopBar name={house.display_name} sub={`Calculate · ${cycle.display_name}`} admin />
         <div className="screen gap">
           <ScreenNav />
           <div className="card admin">
@@ -153,7 +153,7 @@ export function AdminCombined() {
 
   return (
     <Frame>
-      <TopBar icon="LD" name={house.display_name} sub="Finalize the bills" admin />
+      <TopBar name={house.display_name} sub="Finalize the bills" admin />
       <div className="screen gap">
         <ScreenNav />
 

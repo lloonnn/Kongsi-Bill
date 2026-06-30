@@ -42,7 +42,7 @@ export function Hub() {
 
   return (
     <Frame>
-      <TopBar icon="LD" name="Kongsi Bill" sub="Welcome" />
+      <TopBar iconImg="/favicon.svg" name="Kongsi Bill" sub="Welcome" />
       <div className="screen">
         <div className="card">
           <h1 className="title">

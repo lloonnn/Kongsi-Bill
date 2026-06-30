@@ -28,7 +28,7 @@ export function AdminMyDays() {
 
   return (
     <Frame>
-      <TopBar icon="LD" name={house.display_name} sub="My days" admin />
+      <TopBar name={house.display_name} sub="My days" admin />
       <div className="screen">
         <ScreenNav />
 

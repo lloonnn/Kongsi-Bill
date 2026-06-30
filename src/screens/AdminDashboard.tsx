@@ -17,7 +17,7 @@ export function AdminDashboard() {
   if (!adminCode) {
     return (
       <Frame>
-        <TopBar icon="LD" name={house.display_name} sub="Admin only" admin />
+        <TopBar name={house.display_name} sub="Admin only" admin />
         <div className="screen">
           <ScreenNav />
           <div className="card">
@@ -57,7 +57,7 @@ export function AdminDashboard() {
 
   return (
     <Frame>
-      <TopBar icon="LD" name={house.display_name} sub="House overview" admin />
+      <TopBar name={house.display_name} sub="House overview" admin />
       <div className="screen gap">
         <ScreenNav />
 

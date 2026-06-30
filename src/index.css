@@ -110,6 +110,14 @@ body {
 .houseicon.admin {
   background: var(--ink);
 }
+/* image logo tile (brand mark) — the SVG already carries its own shape/fill */
+.houseicon-img {
+  width: 40px;
+  height: 40px;
+  border-radius: 14px;
+  display: block;
+  flex-shrink: 0;
+}
 .topbar .name {
   font-weight: 700;
   font-size: 15px;

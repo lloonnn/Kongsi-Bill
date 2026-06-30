@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useApp } from '../store';
-import { Frame, ProgressRow, ScreenNav, TopBar } from '../ui';
+import { Frame, houseInitials, ProgressRow, ScreenNav, TopBar } from '../ui';
 import { copyText } from '../clipboard';
 import type { AvatarTone } from '../types';
 
@@ -104,7 +104,7 @@ export function AdminSetup() {
   return (
     <Frame>
       <TopBar
-        icon={step === 1 ? '+' : 'LD'}
+        icon={step === 1 ? '+' : houseInitials(houseName)}
         name={step === 1 ? 'New house' : houseName}
         sub={subs[step]}
         admin

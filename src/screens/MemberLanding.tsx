@@ -59,7 +59,7 @@ export function MemberLanding() {
   if (!member) {
     return (
       <Frame>
-        <TopBar icon="LD" name={house.display_name} sub="Home" />
+        <TopBar name={house.display_name} sub="Home" />
         <div className="screen">
           <ScreenNav />
           <div className="card">
@@ -78,7 +78,7 @@ export function MemberLanding() {
 
   return (
     <Frame>
-      <TopBar icon="LD" name={house.display_name} sub={member.name} />
+      <TopBar name={house.display_name} sub={member.name} />
       <div className="screen">
         <ScreenNav />
 

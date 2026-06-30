@@ -23,7 +23,7 @@ export function AdminAddCycle() {
 
   return (
     <Frame>
-      <TopBar icon="LD" name={house.display_name} sub="New billing period" admin />
+      <TopBar name={house.display_name} sub="New billing period" admin />
       <div className="screen">
         <ScreenNav />
 

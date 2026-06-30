@@ -8,7 +8,7 @@ export function AdminInvite() {
 
   return (
     <Frame>
-      <TopBar icon="LD" name={house.display_name} sub="Invite housemates" admin />
+      <TopBar name={house.display_name} sub="Invite housemates" admin />
       <div className="screen">
         <ScreenNav />
         <div className="card admin">

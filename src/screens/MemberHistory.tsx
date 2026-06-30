@@ -15,7 +15,7 @@ export function MemberHistory() {
 
   return (
     <Frame>
-      <TopBar icon="LD" name={house.display_name} sub="Combined bills" />
+      <TopBar name={house.display_name} sub="Combined bills" />
       <div className="screen gap">
         <ScreenNav />
 

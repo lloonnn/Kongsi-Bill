@@ -79,7 +79,7 @@ export function AdminAddBill() {
   if (activeCycles.length === 0) {
     return (
       <Frame>
-        <TopBar icon="LD" name={house.display_name} sub="Add bills" admin />
+        <TopBar name={house.display_name} sub="Add bills" admin />
         <div className="screen">
           <ScreenNav />
           <div className="card admin">
@@ -105,7 +105,7 @@ export function AdminAddBill() {
 
   return (
     <Frame>
-      <TopBar icon="LD" name={house.display_name} sub="Add bills" admin />
+      <TopBar name={house.display_name} sub="Add bills" admin />
       <div className="screen">
         <ScreenNav />
         <ProgressRow total={2} done={1} admin />

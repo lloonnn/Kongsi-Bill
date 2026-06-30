@@ -41,7 +41,7 @@ export function AdminBillDetail() {
   if (!bill) {
     return (
       <Frame>
-        <TopBar icon="LD" name={house.display_name} sub="Bill" admin />
+        <TopBar name={house.display_name} sub="Bill" admin />
         <div className="screen">
           <ScreenNav />
           <div className="card admin">
@@ -98,7 +98,7 @@ function BillEditor({ bill }: { bill: Bill }) {
 
   return (
     <Frame>
-      <TopBar icon="LD" name={house.display_name} sub="Edit bill" admin />
+      <TopBar name={house.display_name} sub="Edit bill" admin />
       <div className="screen gap">
         <ScreenNav />
 

@@ -29,7 +29,7 @@ export function AdminEditDays() {
 
   return (
     <Frame>
-      <TopBar icon="LD" name={house.display_name} sub="Mark days for someone" admin />
+      <TopBar name={house.display_name} sub="Mark days for someone" admin />
       <div className="screen">
         <ScreenNav onBack={selected ? () => setMemberId(null) : undefined} />
 

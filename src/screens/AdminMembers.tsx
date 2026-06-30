@@ -16,7 +16,7 @@ export function AdminMembers() {
 
   return (
     <Frame>
-      <TopBar icon="LD" name={house.display_name} sub="Housemates" admin />
+      <TopBar name={house.display_name} sub="Housemates" admin />
       <div className="screen">
         <ScreenNav />
         <div className="card admin">

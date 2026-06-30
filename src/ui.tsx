@@ -6,6 +6,18 @@ function initials(name: string): string {
   return name.trim().slice(0, 1).toUpperCase() || '?';
 }
 
+/** Up to two leading letters of a house name for its tile, e.g. "Lorong Damai" → "LD". */
+// eslint-disable-next-line react-refresh/only-export-components
+export function houseInitials(name: string): string {
+  const letters = name
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => w[0])
+    .filter((c) => /[a-z0-9]/i.test(c));
+  return letters.slice(0, 2).join('').toUpperCase() || '🏠';
+}
+
 const TONES: AvatarTone[] = ['accent', 'alt2', 'alt3'];
 
 /**
@@ -50,11 +62,15 @@ export function StatusPill({ status }: { status: BillStatus }) {
 
 export function TopBar({
   icon,
+  iconImg,
   name,
   sub,
   admin = false,
 }: {
-  icon: string;
+  /** Explicit tile content (emoji/symbol). Omit to derive the house's initials from `name`. */
+  icon?: string;
+  /** Image logo shown instead of the text tile (e.g. the app brand mark). */
+  iconImg?: string;
   name: string;
   sub: string;
   admin?: boolean;
@@ -62,7 +78,13 @@ export function TopBar({
   return (
     <div className="topbar">
       <div className="topbar-left">
-        <div className={`houseicon ${admin ? 'admin' : ''}`}>{icon}</div>
+        {iconImg ? (
+          <img className="houseicon-img" src={iconImg} width={40} height={40} alt="" />
+        ) : (
+          <div className={`houseicon ${admin ? 'admin' : ''}`}>
+            {icon ?? houseInitials(name)}
+          </div>
+        )}
         <div>
           <div className="name">{name}</div>
           <div className="sub">{sub}</div>

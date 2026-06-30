@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useApp } from '../store';
-import { Avatar, Frame, ProgressRow, ScreenNav, TopBar } from '../ui';
+import { Avatar, Frame, houseInitials, ProgressRow, ScreenNav, TopBar } from '../ui';
 import { Calendar } from '../Calendar';
 import type { DateRange } from '../types';
 
@@ -140,7 +140,7 @@ export function MemberJoin() {
   return (
     <Frame>
       <TopBar
-        icon={step === 'code' ? '🔗' : 'LD'}
+        icon={step === 'code' ? '🔗' : houseInitials(house.display_name)}
         name={step === 'code' ? 'Join a house' : house.display_name}
         sub={subs[step]}
       />
