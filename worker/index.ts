@@ -365,7 +365,7 @@ export default {
       }
 
       return err(404, 'Not found');
-    } catch (e) {
+    } catch {
       // Surface nothing internal; the client only needs to know it failed.
       return err(500, 'Internal error');
     }

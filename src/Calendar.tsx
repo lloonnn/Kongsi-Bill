@@ -98,9 +98,13 @@ export function Calendar({
 
   // Report the current ranges to the parent whenever the selection changes,
   // including the initial (default-present) seed so a Save-without-tapping
-  // still persists a clean record.
+  // still persists a clean record. Keep the latest onChange in a ref (updated
+  // in an effect, never during render) so the reporter effect below doesn't
+  // re-fire just because the parent passed a new callback identity.
   const onChangeRef = useRef(onChange);
-  onChangeRef.current = onChange;
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  });
   useEffect(() => {
     // If the present set still equals the full set of editable days, the member
     // hasn't deselected anything → report [] so we never store an explicit
