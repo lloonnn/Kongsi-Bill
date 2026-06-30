@@ -1,7 +1,8 @@
 import { useState, type CSSProperties } from 'react';
 import { useApp } from '../store';
 import { Frame, ProgressRow, ScreenNav, TopBar } from '../ui';
-import { billIcon, formatPeriod, money, UTILITY_PRESETS } from '../calc';
+import { billIcon, formatPeriod, groupBillsByCycle, money, UTILITY_PRESETS } from '../calc';
+import { isCycleActive } from '../cyclePlacement';
 
 const dateStyle: CSSProperties = {
   width: '100%',
@@ -26,6 +27,13 @@ const dateStyle: CSSProperties = {
  */
 export function AdminAddBill() {
   const { house, route, go, upsertBill, deleteBill, busy, error } = useApp();
+  // Only ACTIVE billing periods are valid targets for a new bill — finalized
+  // (settled) ones are filed in History and would otherwise flood this list. Same
+  // active rule the dashboard uses (open, or reopened with a draft bill); deleted
+  // periods are gone entirely, so nothing stale lingers here.
+  const activeCycles = groupBillsByCycle(house.bills, house.cycles)
+    .filter((g) => isCycleActive(g.cycle, g.bills))
+    .map((g) => g.cycle);
   // The dropdown is a frontend convenience; whatever is chosen (or typed for
   // "Other") resolves to the single free-text utility_label sent to the API.
   const [preset, setPreset] = useState('Water');
@@ -33,9 +41,9 @@ export function AdminAddBill() {
   const [amount, setAmount] = useState('');
   const [start, setStart] = useState('2026-06-01');
   const [end, setEnd] = useState('2026-06-30');
-  // Which cycle these bills land in (migration 0005). Prefer the one the caller
-  // targeted, else the newest existing cycle.
-  const [cycleId, setCycleId] = useState(route.cycleId ?? house.cycles[0]?.cycle_id ?? '');
+  // Which billing period these bills land in (migration 0005). Prefer the one the
+  // caller targeted, else the newest active period.
+  const [cycleId, setCycleId] = useState(route.cycleId ?? activeCycles[0]?.cycle_id ?? '');
   // bill_ids added during this sitting, newest last — drives the preview list.
   const [addedIds, setAddedIds] = useState<string[]>([]);
 
@@ -65,9 +73,10 @@ export function AdminAddBill() {
     setCustomLabel('');
   };
 
-  // A bill can't exist without a cycle — if none exist yet, send the admin to
-  // create one first (it returns here, targeting the new cycle).
-  if (house.cycles.length === 0) {
+  // A bill can't exist without a billing period — if no ACTIVE one exists (none
+  // created yet, or every period is finalized), send the admin to create one
+  // first (it returns here, targeting the new period).
+  if (activeCycles.length === 0) {
     return (
       <Frame>
         <TopBar icon="LD" name={house.display_name} sub="Add bills" admin />
@@ -123,7 +132,7 @@ export function AdminAddBill() {
               marginTop: 8,
             }}
           >
-            {house.cycles.map((c) => (
+            {activeCycles.map((c) => (
               <div
                 key={c.cycle_id}
                 className={`opt ${cycleId === c.cycle_id ? 'selected' : ''}`}
