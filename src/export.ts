@@ -144,7 +144,7 @@ function cycleLines(group: CycleGroup, house: HouseState): string[] {
   }
 
   const lines: string[] = [];
-  lines.push(toRow([`Cycle: ${group.cycle.display_name} (${periodSpanLabel(ordered)})`]));
+  lines.push(toRow([`Billing period: ${group.cycle.display_name} (${periodSpanLabel(ordered)})`]));
 
   // Header: No | Name | <U> Days | <U> Fees | ... | Total
   const header: Field[] = ['No', 'Name'];

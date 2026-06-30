@@ -168,6 +168,12 @@ interface AppContextValue {
   confirmDays: (memberId: string) => Promise<void>;
   /** Create or rename/finalize a cycle (migration 0005). Returns its cycle_id. */
   upsertCycle: (input: CycleInput) => Promise<string>;
+  /**
+   * Delete a cycle and cascade to every bill in it (Worker removes both). Used
+   * to discard a wrongly-created cycle; the dashboard only offers this on active
+   * cycles, so settled history is never wiped by accident.
+   */
+  deleteCycle: (cycleId: string) => Promise<void>;
   upsertBill: (input: BillInput) => Promise<string>;
   deleteBill: (billId: string) => Promise<void>;
   setBillStatus: (billId: string, status: BillStatus) => Promise<void>;
@@ -215,10 +221,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setHouse(state);
   }, [session, adminCode]);
 
-  // On first load (or whenever the session changes), reconnect to the live house.
+  // On first load (or whenever the session changes), reconnect to the live
+  // house. The async load + error handling lives in its own function (not the
+  // effect body), and a cancel flag avoids setting state after unmount.
   useEffect(() => {
     if (!session) return;
-    refresh().catch((e) => setError(e instanceof Error ? e.message : 'Failed to load house'));
+    let cancelled = false;
+    const load = async () => {
+      try {
+        await refresh();
+      } catch (e) {
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : 'Failed to load house');
+        }
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
   }, [session, refresh]);
 
   /** Run an async action with shared busy/error handling. */
@@ -392,6 +413,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return cycle.cycle_id;
       });
 
+    // Delete a cycle and cascade to its bills. The Worker removes both; mirror
+    // that locally by dropping the cycle and every bill that belonged to it.
+    const deleteCycle = (cycleId: string) =>
+      run(async () => {
+        const s = requireSession();
+        await api.deleteCycle(s.houseId, cycleId, requireAdmin());
+        setHouse((h) => ({
+          ...h,
+          cycles: h.cycles.filter((c) => c.cycle_id !== cycleId),
+          bills: h.bills.filter((b) => b.cycle_id !== cycleId),
+        }));
+      });
+
     const upsertBill = (input: BillInput) =>
       run(async () => {
         const s = requireSession();
@@ -533,6 +567,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setPresence,
       confirmDays,
       upsertCycle,
+      deleteCycle,
       upsertBill,
       deleteBill,
       setBillStatus,

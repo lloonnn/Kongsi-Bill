@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useApp } from '../store';
 import { Avatar, Frame, ScreenNav, StatusPill, TopBar } from '../ui';
 import { billIcon, billLabel, formatPeriod, groupBillsByCycle, money } from '../calc';
@@ -6,8 +7,10 @@ import type { Bill } from '../types';
 
 /** Admin house home — bill list + quick actions into every admin tool. */
 export function AdminDashboard() {
-  const { house, go, adminCode } = useApp();
+  const { house, go, adminCode, deleteCycle, busy } = useApp();
   const activeMembers = house.members.filter((m) => m.active);
+  // Which cycle is mid-delete-confirm (inline, no window.confirm) — at most one.
+  const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
 
   // Admin-only area: a housemate (member code only) has no admin key, so every
   // admin action here would fail. Send them to their own home page instead.
@@ -62,17 +65,17 @@ export function AdminDashboard() {
         <div className="card admin">
           <div className="row-between" style={{ marginBottom: 4 }}>
             <div className="working-title" style={{ marginBottom: 0 }}>
-              1 · Active cycles
+              1 · Active billing periods
             </div>
             <button className="copy-btn" onClick={() => go({ name: 'admin-add-cycle' })}>
-              + New cycle
+              + New billing period
             </button>
           </div>
           {groups.length === 0 && (
             <p className="muted-note" style={{ marginBottom: 8 }}>
               {house.cycles.length === 0
-                ? 'Start here — create a cycle (e.g. “June 2026”), then add its bills (electricity, water…).'
-                : 'No active cycles right now. Create a new one above, or find settled cycles in History.'}
+                ? 'Start here — create a billing period (e.g. “June 2026”), then add its bills (electricity, water…).'
+                : 'No active billing periods right now. Create a new one above, or find settled billing periods in History.'}
             </p>
           )}
         </div>
@@ -98,7 +101,7 @@ export function AdminDashboard() {
 
               {g.bills.length === 0 && (
                 <p className="muted-note" style={{ marginBottom: 8 }}>
-                  No bills in this cycle yet.
+                  No bills in this billing period yet.
                 </p>
               )}
 
@@ -140,6 +143,46 @@ export function AdminDashboard() {
                   </button>
                 )}
               </div>
+
+              {/* Delete the whole cycle — cascades to its bills. Inline confirm
+                  (no window.confirm) since it's destructive and irreversible. */}
+              {confirmingDelete === g.cycle.cycle_id ? (
+                <div className="prompt-strip" style={{ marginTop: 12 }}>
+                  <span className="pico">🗑️</span>
+                  <div style={{ flex: 1 }}>
+                    Delete <b>{g.cycle.display_name}</b> and its {g.bills.length} bill
+                    {g.bills.length === 1 ? '' : 's'}? This can’t be undone.
+                    <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                      <button
+                        className="btn-primary"
+                        style={{ marginTop: 0 }}
+                        disabled={busy}
+                        onClick={async () => {
+                          await deleteCycle(g.cycle.cycle_id);
+                          setConfirmingDelete(null);
+                        }}
+                      >
+                        {busy ? 'Deleting…' : 'Delete billing period'}
+                      </button>
+                      <button
+                        className="btn-ghost"
+                        style={{ marginTop: 0 }}
+                        onClick={() => setConfirmingDelete(null)}
+                      >
+                        Keep it
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  className="btn-ghost"
+                  style={{ marginTop: 8 }}
+                  onClick={() => setConfirmingDelete(g.cycle.cycle_id)}
+                >
+                  🗑️ Delete billing period
+                </button>
+              )}
             </div>
           );
         })}

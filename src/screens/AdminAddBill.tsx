@@ -74,14 +74,14 @@ export function AdminAddBill() {
         <div className="screen">
           <ScreenNav />
           <div className="card admin">
-            <div className="eyebrow-pill admin">🗂️ Cycle needed</div>
-            <h1 className="title sm">Create a cycle first</h1>
+            <div className="eyebrow-pill admin">🗂️ Billing period needed</div>
+            <h1 className="title sm">Create a billing period first</h1>
             <p className="sub">
-              Bills belong to a billing cycle (e.g. “June 2026”). Create one, then
+              Bills belong to a billing period (e.g. “June 2026”). Create one, then
               add its bills.
             </p>
             <button className="btn-primary" onClick={() => go({ name: 'admin-add-cycle' })}>
-              + New cycle
+              + New billing period
             </button>
           </div>
         </div>
@@ -110,9 +110,9 @@ export function AdminAddBill() {
           </p>
 
           <div className="row-between" style={{ alignItems: 'center' }}>
-            <span className="field-label">Cycle</span>
+            <span className="field-label">Billing period</span>
             <button className="copy-btn" onClick={() => go({ name: 'admin-add-cycle' })}>
-              + New cycle
+              + New billing period
             </button>
           </div>
           <div

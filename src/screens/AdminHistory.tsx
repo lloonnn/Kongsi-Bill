@@ -26,20 +26,21 @@ export function AdminHistory() {
         <ScreenNav />
 
         <div className="card admin">
-          <div className="working-title">Finalized cycles</div>
+          <div className="working-title">Finalized billing periods</div>
           <p className="muted-note">
-            Settled cycles, filed once you finalize them. One combined amount goes
-            to the landlord each cycle — tap a cycle to see how it’s made up and
-            what each person owes. Open a bill to reopen it if something’s wrong;
-            that moves the whole cycle back to the main screen until you re-finalize.
+            Settled billing periods, filed once you finalize them. One combined
+            amount goes to the landlord each period — tap one to see how it’s made
+            up and what each person owes. Open a bill to reopen it if something’s
+            wrong; that moves the whole billing period back to the main screen
+            until you re-finalize.
           </p>
         </div>
 
         {groups.length === 0 ? (
           <div className="card admin">
             <p className="muted-note">
-              No finalized cycles yet. Once you Calculate a cycle, it settles and
-              files here.
+              No finalized billing periods yet. Once you Calculate a billing
+              period, it settles and files here.
             </p>
           </div>
         ) : (

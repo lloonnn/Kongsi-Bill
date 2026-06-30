@@ -350,6 +350,13 @@ export default {
         return upsertBill(env, houseId, body);
       }
 
+      // POST /house/:id/cycle/:cycleId/remove — delete a cycle + its bills (auth: admin).
+      if (method === 'POST' && seg.length === 5 && seg[2] === 'cycle' && seg[4] === 'remove') {
+        const guard = requireAdmin(house, url, request, body);
+        if (guard) return guard;
+        return removeCycle(env, houseId, seg[3]);
+      }
+
       // POST /house/:id/bill/:billId/remove — delete a bill (auth: admin).
       if (method === 'POST' && seg.length === 5 && seg[2] === 'bill' && seg[4] === 'remove') {
         const guard = requireAdmin(house, url, request, body);
@@ -752,6 +759,27 @@ async function upsertBill(env: Env, houseId: string, body: AnyBody): Promise<Res
     .run();
 
   return json({ bill_id, cycle_id, utility_label, amount, period_start, period_end, status, paid_snapshot: snapshot }, 201);
+}
+
+async function removeCycle(env: Env, houseId: string, cycleId: string): Promise<Response> {
+  const existing = await env.DB.prepare(
+    'SELECT cycle_id FROM cycles WHERE cycle_id = ? AND house_id = ?'
+  )
+    .bind(cycleId, houseId)
+    .first<{ cycle_id: string }>();
+  if (!existing) return err(404, 'Cycle not found');
+
+  // Cascade by hand: delete this cycle's bills, then the cycle. The bills.cycle_id
+  // FK (migration 0005) has no ON DELETE CASCADE and D1's FK cascade is unreliable,
+  // so we delete both explicitly in one batch (atomic). Bills are hard-deleted just
+  // like removeBill — they have no FK dependents (presence is tied to members, not
+  // bills), and the cycle is scoped to THIS house so no other house is touched.
+  await env.DB.batch([
+    env.DB.prepare('DELETE FROM bills WHERE cycle_id = ? AND house_id = ?').bind(cycleId, houseId),
+    env.DB.prepare('DELETE FROM cycles WHERE cycle_id = ? AND house_id = ?').bind(cycleId, houseId),
+  ]);
+
+  return json({ cycle_id: cycleId, deleted: true });
 }
 
 async function removeBill(env: Env, houseId: string, billId: string): Promise<Response> {

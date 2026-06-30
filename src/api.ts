@@ -176,6 +176,18 @@ export function upsertCycle(houseId: string, cycle: CycleInput, adminCode: strin
   });
 }
 
+/** POST /api/house/:id/cycle/:cycleId/remove — delete a cycle + its bills (auth: admin). */
+export function deleteCycle(
+  houseId: string,
+  cycleId: string,
+  adminCode: string
+): Promise<{ cycle_id: string; deleted: boolean }> {
+  return request(
+    `/api/house/${encodeURIComponent(houseId)}/cycle/${encodeURIComponent(cycleId)}/remove`,
+    { method: 'POST', adminCode }
+  );
+}
+
 /** POST /api/house/:id/bill — create or update a bill incl. status (auth: admin). */
 export function upsertBill(houseId: string, bill: BillInput, adminCode: string): Promise<Bill> {
   return request(`/api/house/${encodeURIComponent(houseId)}/bill`, {

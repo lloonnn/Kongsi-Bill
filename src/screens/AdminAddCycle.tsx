@@ -23,20 +23,20 @@ export function AdminAddCycle() {
 
   return (
     <Frame>
-      <TopBar icon="LD" name={house.display_name} sub="New cycle" admin />
+      <TopBar icon="LD" name={house.display_name} sub="New billing period" admin />
       <div className="screen">
         <ScreenNav />
 
         <div className="card admin">
-          <div className="eyebrow-pill admin">🗂️ New cycle</div>
-          <h1 className="title sm">Name this billing cycle</h1>
+          <div className="eyebrow-pill admin">🗂️ New billing period</div>
+          <h1 className="title sm">Name this billing period</h1>
           <p className="sub">
-            A cycle groups one period’s bills (electricity, water…) so you
-            Calculate them together — e.g. <b>June 2026</b>. Different cycles stay
-            separate, even if their dates overlap.
+            A billing period groups its bills (electricity, water…) so you
+            Calculate them together — e.g. <b>June 2026</b>. Different billing
+            periods stay separate, even if their dates overlap.
           </p>
 
-          <span className="field-label">Cycle name</span>
+          <span className="field-label">Billing period name</span>
           <input
             type="text"
             className="field"
@@ -48,7 +48,7 @@ export function AdminAddCycle() {
           />
 
           <button className="btn-primary" disabled={!valid || busy} onClick={create}>
-            {busy ? 'Creating…' : 'Create cycle & add bills'}
+            {busy ? 'Creating…' : 'Create billing period & add bills'}
           </button>
           {error && (
             <p className="muted-note" style={{ color: 'var(--warn-ink)', marginTop: 8 }}>

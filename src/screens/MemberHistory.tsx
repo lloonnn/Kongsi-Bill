@@ -22,7 +22,7 @@ export function MemberHistory() {
         <div className="card">
           <div className="working-title">Combined bills</div>
           <p className="muted-note">
-            What the house pays the landlord each cycle. Tap a combined bill to
+            What the house pays the landlord each billing period. Tap a combined bill to
             see how it’s made up and what everyone owes. Open bills can still
             change as people mark their away days.
           </p>

@@ -56,7 +56,7 @@ export function AdminCombined() {
         <div className="screen gap">
           <ScreenNav />
           <div className="card admin">
-            <p className="sub">Pick a cycle to calculate from the house overview.</p>
+            <p className="sub">Pick a billing period to calculate from the house overview.</p>
             <button className="btn-primary" onClick={() => go({ name: 'admin-dashboard' })}>
               Back to house
             </button>
@@ -128,7 +128,7 @@ export function AdminCombined() {
               <>
                 <div className="recon-strip ok">
                   <span>🎉</span>
-                  <div>Announced &amp; done — this cycle is closed and filed in history.</div>
+                  <div>Announced &amp; done — this billing period is closed and filed in history.</div>
                 </div>
                 <button className="btn-primary" onClick={() => go({ name: 'admin-history' })}>
                   View in history

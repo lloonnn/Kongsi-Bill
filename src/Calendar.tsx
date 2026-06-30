@@ -61,22 +61,37 @@ export function Calendar({
 
   const seed = (): Set<string> => {
     if (!member) return new Set();
-    if (member.presence.length === 0) {
-      // Default to present: pre-select every OPEN (draft) bill's days. Settled
-      // bills are skipped here — default-to-present is about bills still being
-      // worked on, not back-filling closed ones. (A still-mutable settled bill's
-      // days also stay locked below; see presenceLock.)
-      const s = new Set<string>();
-      for (const b of bills) {
-        if (b.status !== 'draft') continue;
-        for (const k of periodKeys(b)) s.add(k);
-      }
-      return s;
+    // Start from the member's recorded present days, then apply default-to-present
+    // PER billing period: for each OPEN (draft) bill whose period the member has
+    // not marked at all, pre-select that period's days. Scoping the default to each
+    // bill's own period stops it bleeding across periods — a member who marked days
+    // in one period still defaults to present in a *different* one (e.g. a newly
+    // added cycle) instead of wrongly showing as away there. (The old all-or-nothing
+    // rule only defaulted when the member had NO presence anywhere, so any earlier
+    // edit suppressed the default for every later period.) Settled bills are skipped
+    // — default-to-present is about bills still being worked on; a still-mutable
+    // settled bill's days also stay locked below (see presenceLock).
+    const recorded = presentDaysFromRanges(member.presence);
+    const s = new Set(recorded);
+    for (const b of bills) {
+      if (b.status !== 'draft') continue;
+      const keys = periodKeys(b);
+      if (keys.some((k) => recorded.has(k))) continue; // already marked in this period
+      for (const k of keys) s.add(k);
     }
-    return presentDaysFromRanges(member.presence);
+    return s;
   };
 
   const [present, setPresent] = useState<Set<string>>(seed);
+
+  // Reseed when the member being edited changes (admin editing several people).
+  // React's "adjust state during render" pattern — re-seed inline when memberId
+  // changes, rather than from an effect (which would trigger a second render).
+  const [seededFor, setSeededFor] = useState(memberId);
+  if (memberId !== seededFor) {
+    setSeededFor(memberId);
+    setPresent(seed());
+  }
 
   // The full set of EDITABLE day-keys (in a draft bill's period; locked bills
   // contribute none). Used to tell an untouched default-present selection from a
@@ -89,12 +104,6 @@ export function Calendar({
     }
     return s;
   }, [bills]);
-
-  // Reseed when the member being edited changes (admin editing several people).
-  useEffect(() => {
-    setPresent(seed());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [memberId]);
 
   // Report the current ranges to the parent whenever the selection changes,
   // including the initial (default-present) seed so a Save-without-tapping

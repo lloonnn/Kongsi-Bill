@@ -119,7 +119,7 @@ function BillEditor({ bill }: { bill: Bill }) {
               </div>
             </div>
             <p className="muted-note" style={{ marginTop: 12 }}>
-              This bill belongs to a finished cycle, so it’s locked. Reopen just
+              This bill belongs to a finished billing period, so it’s locked. Reopen just
               this bill to correct it — it’ll rejoin the open bills on the
               Finalize screen.
             </p>
