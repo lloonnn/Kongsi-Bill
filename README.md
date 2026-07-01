@@ -6,8 +6,6 @@ Kongsi Bill splits household bills — electricity, water, gas, whatever — bet
 
 > **"Kongsi"** is Malay for *sharing something within a group* — which is pretty much the whole point. The app is built with Singapore and Malaysia housemates in mind.
 
-**Last updated:** 30 June 2026 · *The frontend is at prototype stage (the UI will be redesigned). The calculation, data model, Worker API, architecture, and deployment described below are settled.*
-
 ---
 
 ## Documentation
@@ -214,8 +212,6 @@ If your answer doesn't match the app's, **the app is wrong** — please open an 
 ---
 
 ## Project layout
-
-> Reflects the current layout; the frontend (`src/`) is prototype-stage and will be reorganised when the UI is redesigned.
 
 ```
 kongsi-bill/
