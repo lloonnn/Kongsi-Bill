@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useApp } from '../store';
 import { Avatar, Frame, ScreenNav, TopBar } from '../ui';
 import { billLabel, calculateCombined, money, remainderSentence } from '../calc';
+import { buildJoinCode } from '../joinCode';
 import type { RoundingConfig } from '../types';
 
 /**
@@ -106,7 +107,7 @@ export function AdminCombined() {
     const text =
       `Reminder for ${house.display_name}: please mark your days in Kongsi Bill ` +
       `before I finalize the bills. If you don't, you're counted home the whole ` +
-      `period and pay a full share. Join code: ${house.member_code}`;
+      `period and pay a full share. Join code: ${buildJoinCode(house.house_id, house.member_code)}`;
     try {
       await navigator.clipboard.writeText(text);
       setReminderCopied(true);

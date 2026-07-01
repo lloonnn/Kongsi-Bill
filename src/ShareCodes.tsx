@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useApp } from './store';
 import { copyText } from './clipboard';
+import { buildJoinCode } from './joinCode';
 
 /**
  * Share card — copy the join link or the join code to invite another
@@ -13,6 +14,9 @@ export function ShareCodes({ title = 'Invite a housemate' }: { title?: string })
   // Same-origin join link — built from the current location so it always points
   // at wherever the app is served, never a hardcoded domain.
   const link = `${window.location.origin}/join?house=${house.house_id}&code=${house.member_code}`;
+  // The "no link" fallback: one combined join code that bundles the house id and
+  // member code, so the house id is never shared as a separate value.
+  const joinCode = buildJoinCode(house.house_id, house.member_code);
 
   const flash = async (id: string, text: string) => {
     const ok = await copyText(text);
@@ -38,8 +42,8 @@ export function ShareCodes({ title = 'Invite a housemate' }: { title?: string })
       <div className="code-zone member-zone">
         <div className="code-zone-label">Or the join code</div>
         <div className="code-with-copy">
-          <span className="code-zone-value">{house.member_code}</span>
-          <button className="copy-btn" onClick={() => flash('code', house.member_code)}>
+          <span className="code-zone-value">{joinCode}</span>
+          <button className="copy-btn" onClick={() => flash('code', joinCode)}>
             {copied === 'code' ? '✓ Copied' : 'Copy'}
           </button>
         </div>

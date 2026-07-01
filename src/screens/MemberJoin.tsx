@@ -3,19 +3,9 @@ import { useApp } from '../store';
 import { Avatar, Frame, houseInitials, ProgressRow, ScreenNav, TopBar } from '../ui';
 import { Calendar } from '../Calendar';
 import type { DateRange } from '../types';
+import { buildJoinCode, parseJoinCode } from '../joinCode';
 
 type Step = 'code' | 'welcome' | 'recognize' | 'name' | 'calendar';
-
-/**
- * Normalize a typed code/room-id to the *stored* format so lenient typing still
- * matches D1 exactly. The Worker compares codes with `===` (case-sensitive,
- * dashes included) and stores them upper-cased and grouped in 4s ("XW08-BCBN"),
- * so we upper-case and re-insert a dash every 4 chars — NOT strip the dashes.
- */
-function normalizeCode(s: string): string {
-  const clean = s.replace(/[^a-z0-9]/gi, '').toUpperCase();
-  return clean.replace(/(.{4})(?=.)/g, '$1-');
-}
 
 /**
  * Read the invite (house id + member code) from the join link's query string,
@@ -45,11 +35,12 @@ export function MemberJoin() {
   // fine, unlike reading a ref's .current).
   const [invite] = useState(readInvite);
   const [step, setStep] = useState<Step>('code');
-  // Pre-fill from the link so a failed auto-join leaves both fields ready to
-  // retry by hand. A hand-typed code can't identify the house, so the manual
-  // form also needs the house/room id (the link carries both).
-  const [houseInput, setHouseInput] = useState(invite?.house ?? '');
-  const [codeInput, setCodeInput] = useState(invite?.code ?? '');
+  // Pre-fill from the link so a failed auto-join leaves the field ready to retry
+  // by hand. The manual field is ONE combined join code (house id + member code
+  // bundled) — the house id is never shown or typed separately.
+  const [codeInput, setCodeInput] = useState(
+    invite ? buildJoinCode(invite.house, invite.code) : ''
+  );
   const [codeError, setCodeError] = useState(false);
 
   // Invite-link arrival (cold device): join straight from the URL params, with
@@ -85,13 +76,16 @@ export function MemberJoin() {
   const member = activeId ? house.members.find((m) => m.member_id === activeId) : null;
 
   // Manual entry: join the REAL house via the API (same path as the link), not
-  // a local mock comparison. The house id + member code both come from the form.
+  // a local mock comparison. The single combined join code carries both the
+  // house id and the member code; split it, then join.
   const submitCode = async () => {
-    const houseId = normalizeCode(houseInput);
-    const code = normalizeCode(codeInput);
-    if (!houseId || !code) return;
+    const parsed = parseJoinCode(codeInput);
+    if (!parsed) {
+      setCodeError(true);
+      return;
+    }
     try {
-      await joinHouse(houseId, code); // GET /api/house/:id with X-Member-Code
+      await joinHouse(parsed.house, parsed.code); // GET /api/house/:id with X-Member-Code
       setCodeError(false);
       setStep('welcome');
     } catch {
@@ -158,27 +152,16 @@ export function MemberJoin() {
         {step === 'code' && !joiningFromLink && (
           <div className="card">
             <div className="eyebrow-pill">🔗 Join a house</div>
-            <h1 className="title sm">Enter your house ID and code</h1>
+            <h1 className="title sm">Enter your join code</h1>
             <p className="sub">
-              Enter the house ID and join code your housemates shared with you.
-              Both are in the invite link — you only need to type them if you
+              Enter the join code your housemates shared with you. It’s the same
+              code that’s inside the invite link — you only need to type it if you
               don’t have the link.
             </p>
             <input
               type="text"
               className="field"
-              placeholder="House ID — e.g. XW08-BCBN"
-              value={houseInput}
-              onChange={(e) => {
-                setHouseInput(e.target.value);
-                setCodeError(false);
-              }}
-              onKeyDown={(e) => e.key === 'Enter' && submitCode()}
-            />
-            <input
-              type="text"
-              className="field"
-              placeholder="Join code — e.g. XYZ-4821"
+              placeholder="e.g. XW08-BCBN-EZSY-KFRN"
               value={codeInput}
               onChange={(e) => {
                 setCodeInput(e.target.value);
@@ -188,14 +171,10 @@ export function MemberJoin() {
             />
             {codeError && (
               <p className="muted-note" style={{ color: 'var(--warn-ink)', marginTop: 8 }}>
-                That house ID and code didn’t match a house. Check them and try again.
+                That join code didn’t match a house. Check it and try again.
               </p>
             )}
-            <button
-              className="btn-primary"
-              disabled={!houseInput.trim() || !codeInput.trim()}
-              onClick={submitCode}
-            >
+            <button className="btn-primary" disabled={!codeInput.trim()} onClick={submitCode}>
               Join
             </button>
           </div>

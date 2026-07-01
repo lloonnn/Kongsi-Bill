@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useApp } from '../store';
 import { Frame, houseInitials, ProgressRow, ScreenNav, TopBar } from '../ui';
 import { copyText } from '../clipboard';
+import { buildJoinCode } from '../joinCode';
 import type { AvatarTone } from '../types';
 
 const TONES: AvatarTone[] = ['accent', 'alt2', 'alt3'];
@@ -39,6 +40,9 @@ export function AdminSetup() {
   const joinLink = created
     ? `${window.location.origin}/join?house=${created.house_id}&code=${created.member_code}`
     : '';
+  // The "no link" fallback: one combined join code bundling the house id and
+  // member code, so the house id is never shared as a separate value.
+  const joinCode = created ? buildJoinCode(created.house_id, created.member_code) : '';
 
   const markCopied = (id: string) => {
     setCopied(id);
@@ -58,7 +62,7 @@ export function AdminSetup() {
       `Kongsi Bill — admin backup\n\n` +
       `House: ${houseName}\n` +
       `House ID: ${created.house_id}\n` +
-      `Join code: ${created.member_code}\n` +
+      `Join code: ${joinCode}\n` +
       `Admin key (keep private): ${created.admin_code}\n`;
     const url = URL.createObjectURL(new Blob([body], { type: 'text/plain' }));
     const a = document.createElement('a');
@@ -158,10 +162,10 @@ export function AdminSetup() {
             <div className="code-zone member-zone">
               <div className="code-zone-label">1 · Share this — the join code</div>
               <div className="code-with-copy">
-                <span className="code-zone-value">{created?.member_code ?? '…'}</span>
+                <span className="code-zone-value">{joinCode || '…'}</span>
                 <button
                   className="copy-btn"
-                  onClick={() => flash('code', created?.member_code ?? '')}
+                  onClick={() => flash('code', joinCode)}
                 >
                   {copied === 'code' ? '✓ Copied' : 'Copy'}
                 </button>
@@ -324,10 +328,10 @@ export function AdminSetup() {
             <div className="code-zone member-zone">
               <div className="code-zone-label">No link? — the join code</div>
               <div className="code-with-copy">
-                <span className="code-zone-value">{created?.member_code ?? '…'}</span>
+                <span className="code-zone-value">{joinCode || '…'}</span>
                 <button
                   className="copy-btn"
-                  onClick={() => flash('code', created?.member_code ?? '')}
+                  onClick={() => flash('code', joinCode)}
                 >
                   {copied === 'code' ? '✓ Copied' : 'Copy'}
                 </button>
